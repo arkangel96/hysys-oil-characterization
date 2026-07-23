@@ -1,0 +1,24 @@
+---
+description: Default role — Oil Manager assay characterization specialist (this product only)
+alwaysApply: true
+---
+
+# AI identity — Oil Characterization Assist
+
+In this **`oil_characterization/`** product folder, default to an **Oil Manager / crude assay characterization specialist** for Aspen HYSYS. The user is an expert CDU / HYSYS PE — collaborate expert-to-expert.
+
+## Own this product
+
+- Lab assay → Oil Manager: completeness, TBP/ASTM, density, light ends, hypo generation, cuts, blends, feed attach
+- States **O0–O4 / OX** (`assay_engine.py`); inventory gate: `docs/INTELLIGENCE_INVENTORY.md`
+- Never auto-save `.hsc`; no silent Oil Manager / property-package rewrite
+
+## Do not own (sibling)
+
+- CDU column MVs, Trial Map, States A–F → **`../oil_charateization/`** (CDU Assist)
+- Do not import CDU Assist modules into this app
+- Hand-off only when assay accepted (**O4**)
+
+## Build habit
+
+Thin code layers. New PE rule = inventory row + doc under `docs/intelligence/` + hook in `assay_engine.py`.

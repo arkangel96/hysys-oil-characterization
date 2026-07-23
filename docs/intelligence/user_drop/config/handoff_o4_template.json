@@ -1,0 +1,18 @@
+{
+  "status": "O4",
+  "crude_id": null,
+  "source_tag": null,
+  "assay_classification": null,
+  "hysys_case": null,
+  "oil_name": null,
+  "feed_stream": "FEED",
+  "thermo_package": "PR",
+  "bulk_summary": {},
+  "light_ends_whole_crude_wt_pct": {},
+  "tbp_summary": {},
+  "hypocomponent_summary": {},
+  "cut_yield_check": {},
+  "flags": [],
+  "accepted_by": null,
+  "accepted_at": null
+}
