@@ -49,3 +49,9 @@ Or double-click `Open Oil Characterization Assist.bat`.
 - This app: **feed / assay / Oil Manager**
 - CDU Assist: **column MVs / converge / Trial Map**
 - Hand-off rule: tower trials only after assay is **accepted** (feed OK)
+
+## Discussion / intelligence
+
+- Session notes (what we discussed): [`docs/DISCUSSION_HISTORY_2026-07-23.md`](docs/DISCUSSION_HISTORY_2026-07-23.md)
+- User intelligence pack: [`docs/intelligence/user_drop/`](docs/intelligence/user_drop/)
+- Inventory: [`docs/INTELLIGENCE_INVENTORY.md`](docs/INTELLIGENCE_INVENTORY.md)
