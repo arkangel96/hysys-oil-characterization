@@ -172,28 +172,64 @@ class HysysController:
     def probe_oil_manager(self) -> str:
         """Best-effort Oil Manager / assay presence note (read-only discovery)."""
         self._require_connection()
-        notes: list[str] = []
-        basis = getattr(self.case, "BasisManager", None)
-        if basis is None:
-            return "BasisManager not exposed on this COM build."
+        from aspen_intelligence import OIL_MANAGER_MEMBERS, OIL_MANAGER_PROBE_PATHS
 
-        for attr in ("Oils", "OilManager", "Assays", "Blends"):
+        notes: list[str] = []
+
+        def _walk(root: Any, parts: tuple[str, ...]) -> Any:
+            obj = root
+            for part in parts:
+                obj = getattr(obj, part, None)
+                if obj is None:
+                    return None
+            return obj
+
+        for path in OIL_MANAGER_PROBE_PATHS:
             try:
-                obj = getattr(basis, attr, None)
+                obj = _walk(self.case, path)
                 if obj is None:
                     continue
+                label = ".".join(path)
                 try:
                     count = int(obj.Count)
-                    notes.append(f"{attr}: Count={count}")
+                    notes.append(f"{label}: Count={count}")
                 except Exception:
-                    notes.append(f"{attr}: present (Count not readable)")
+                    notes.append(f"{label}: present")
+                # If this looks like OilManager, list readable members
+                if path[-1] == "OilManager":
+                    readable = []
+                    for member in OIL_MANAGER_MEMBERS:
+                        try:
+                            if getattr(obj, member, None) is not None:
+                                readable.append(member)
+                        except Exception:
+                            continue
+                    if readable:
+                        notes.append("OilManager members: " + ", ".join(readable[:8]))
             except Exception as exc:
-                notes.append(f"{attr}: error ({exc})")
+                notes.append(f"{'.'.join(path)}: error ({exc})")
+
+        # Legacy BasisManager attribute scan
+        basis = getattr(self.case, "BasisManager", None)
+        if basis is not None:
+            for attr in ("Oils", "OilManager", "Assays", "Blends"):
+                if any(attr in n for n in notes):
+                    continue
+                try:
+                    obj = getattr(basis, attr, None)
+                    if obj is None:
+                        continue
+                    try:
+                        notes.append(f"BasisManager.{attr}: Count={int(obj.Count)}")
+                    except Exception:
+                        notes.append(f"BasisManager.{attr}: present")
+                except Exception:
+                    continue
 
         if not notes:
             return (
-                "No Oils/OilManager/Assays collection found via BasisManager yet. "
-                "Continue COM discovery for this HYSYS release."
+                "No Oils/OilManager/Assays found yet (Aspen COM paths tried). "
+                "See docs/intelligence/aspen/ and aspen_intelligence.py."
             )
         return "; ".join(notes)
 

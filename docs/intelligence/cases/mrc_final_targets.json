@@ -1,0 +1,71 @@
+{
+  "document": "ICDL 001 C 11 T 001 H — TECHNICAL PROPOSAL",
+  "section": "2.4.2 Products Specifications",
+  "usage": "FINAL_TARGETS for CDU Assist — not Oil Manager assay inputs",
+  "cut_slate_C": {
+    "light_naphtha": {"tbp_min_C": 5, "tbp_max_C": 100, "note": "C5–100"},
+    "heavy_naphtha": {"tbp_min_C": 100, "tbp_max_C": 170},
+    "kerosene": {"tbp_min_C": 170, "tbp_max_C": 230},
+    "light_gas_oil": {"tbp_min_C": 230, "tbp_max_C": 335},
+    "heavy_gas_oil": {"tbp_min_C": 335, "tbp_max_C": 355},
+    "atm_residue": {"tbp_min_C": 355, "tbp_max_C": null}
+  },
+  "products": {
+    "LPG": {
+      "C2_mol_pct_max": 0.6,
+      "C3_mol_pct_winter": [31, 41],
+      "C3_mol_pct_summer": [22, 32],
+      "C4_mol_pct_winter": [54, 64],
+      "C4_mol_pct_summer": [63, 73],
+      "C5_mol_pct_max": 1.5,
+      "olefins_mol_pct_max": 0.1,
+      "propane_purity_vol_pct_min": 95,
+      "sulfur_wt_ppm_max": 50,
+      "h2s_copper_strip": "1A",
+      "rvp_kg_cm2_a": [6.3, 10],
+      "water_wt_pct": "nil"
+    },
+    "Light Naphtha": {
+      "sg_15C": [0.65, 0.69],
+      "rvp_kg_cm2_a_max": 0.65,
+      "astm_d86_ibp_C_min": 35,
+      "astm_d86_ebp_C_max": 150,
+      "water_ppm_max": 100
+    },
+    "Heavy Naphtha": {
+      "sg_15C": [0.715, 0.755],
+      "astm_d86_ibp_C_min": 90,
+      "astm_d86_ebp_C_max": 178,
+      "water_ppm_max": 100
+    },
+    "Kerosene": {
+      "sg_15C": [0.785, 0.81],
+      "sulfur_wt_pct_max": 0.5,
+      "flash_C_min": 40,
+      "flash_note": "+30 min (+20 min for blends with Mishrif content)",
+      "astm_d86_ibp_C_min": 135,
+      "astm_d86_ebp_C_max": 250
+    },
+    "Light Gas Oil": {
+      "sg_15C": [0.825, 0.855],
+      "sulfur_wt_pct_max": 1.5,
+      "flash_C_min": 70,
+      "color_astm_max": 0.5,
+      "astm_d86_ibp_C_min": 200,
+      "astm_d86_ebp_C_max": 350
+    },
+    "Heavy Gas Oil": {
+      "sg_15C": [0.87, 0.91],
+      "sulfur_wt_pct_max": 3.0,
+      "flash_C_min": 90,
+      "color_astm_max": 2.5,
+      "astm_d1160_95vol_C_max": 420
+    },
+    "Atm. Residue": {
+      "sg_15C": [0.93, 0.97],
+      "flash_C_min": 120,
+      "viscosity_cSt_50C": [350, 3000],
+      "viscosity_cSt_100C": [25, 105]
+    }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "document": "ICDL 001 C 11 T 001 H — TECHNICAL PROPOSAL",
+  "section": "2.5 MATERIAL BALANCE REV. F",
+  "basis": "Dry crude oil",
+  "project": "CDU 70000 BPSD + LPG UNIT",
+  "client": "MRC",
+  "volumetric_crude_rate_m3_h_15C": {
+    "nominal_100pct": 463.7,
+    "max_105pct": 487.0,
+    "note": "Same liquid volumetric crude rate for Basrah and Mishrif; mass differs"
+  },
+  "cases": {
+    "BASRAH": {
+      "crude_id": "BASRAH",
+      "total": {
+        "wt_pct": 100.0,
+        "vol_pct": 100.0,
+        "nominal_100pct": {"kg_h": 400260, "m3_h_15C": 463.7},
+        "max_105pct": {"kg_h": 420270, "m3_h_15C": 487.0}
+      },
+      "streams": [
+        {"fluid": "Off Gas", "wt_pct": 0.01, "vol_pct": null, "nominal_100pct": {"kg_h": 40, "m3_h_15C": null}, "max_105pct": {"kg_h": 40, "m3_h_15C": null}},
+        {"fluid": "Fuel Gas", "wt_pct": 0.06, "vol_pct": null, "nominal_100pct": {"kg_h": 260, "m3_h_15C": null}, "max_105pct": {"kg_h": 270, "m3_h_15C": null}},
+        {"fluid": "Sour Gas", "wt_pct": 0.01, "vol_pct": null, "nominal_100pct": {"kg_h": 50, "m3_h_15C": null}, "max_105pct": {"kg_h": 50, "m3_h_15C": null}},
+        {"fluid": "LPG", "wt_pct": 1.66, "vol_pct": 2.56, "nominal_100pct": {"kg_h": 6650, "m3_h_15C": 11.9}, "max_105pct": {"kg_h": 6990, "m3_h_15C": 12.5}},
+        {"fluid": "Light Naphtha", "wt_pct": 8.35, "vol_pct": 10.76, "nominal_100pct": {"kg_h": 33420, "m3_h_15C": 49.9}, "max_105pct": {"kg_h": 35100, "m3_h_15C": 52.4}},
+        {"fluid": "Heavy Naphtha", "wt_pct": 12.53, "vol_pct": 13.5, "nominal_100pct": {"kg_h": 50160, "m3_h_15C": 62.6}, "max_105pct": {"kg_h": 52660, "m3_h_15C": 65.8}},
+        {"fluid": "Kerosene", "wt_pct": 8.5, "vol_pct": 9.14, "nominal_100pct": {"kg_h": 34010, "m3_h_15C": 42.4}, "max_105pct": {"kg_h": 35710, "m3_h_15C": 44.5}},
+        {"fluid": "Light Gas Oil", "wt_pct": 16.89, "vol_pct": 17.34, "nominal_100pct": {"kg_h": 67620, "m3_h_15C": 80.4}, "max_105pct": {"kg_h": 71000, "m3_h_15C": 84.4}},
+        {"fluid": "Heavy Gas Oil", "wt_pct": 3.36, "vol_pct": 3.24, "nominal_100pct": {"kg_h": 13444, "m3_h_15C": 15.0}, "max_105pct": {"kg_h": 14114, "m3_h_15C": 15.8}},
+        {"fluid": "Atm. Residue (Red. Crude)", "wt_pct": 48.62, "vol_pct": 43.45, "nominal_100pct": {"kg_h": 194606, "m3_h_15C": 201.5}, "max_105pct": {"kg_h": 204336, "m3_h_15C": 211.6}}
+      ]
+    },
+    "MISHRIF": {
+      "crude_id": "MISHRIF",
+      "total": {
+        "wt_pct": 100.0,
+        "vol_pct": 100.0,
+        "nominal_100pct": {"kg_h": 415630, "m3_h_15C": 463.7},
+        "max_105pct": {"kg_h": 436420, "m3_h_15C": 487.0}
+      },
+      "streams": [
+        {"fluid": "Off Gas", "wt_pct": 0.06, "vol_pct": null, "nominal_100pct": {"kg_h": 270, "m3_h_15C": null}, "max_105pct": {"kg_h": 280, "m3_h_15C": null}},
+        {"fluid": "Fuel Gas", "wt_pct": 0.04, "vol_pct": null, "nominal_100pct": {"kg_h": 180, "m3_h_15C": null}, "max_105pct": {"kg_h": 190, "m3_h_15C": null}},
+        {"fluid": "Sour Gas", "wt_pct": 0.01, "vol_pct": null, "nominal_100pct": {"kg_h": 50, "m3_h_15C": null}, "max_105pct": {"kg_h": 50, "m3_h_15C": null}},
+        {"fluid": "LPG", "wt_pct": 1.32, "vol_pct": 2.07, "nominal_100pct": {"kg_h": 5480, "m3_h_15C": 9.6}, "max_105pct": {"kg_h": 5760, "m3_h_15C": 10.1}},
+        {"fluid": "Light Naphtha", "wt_pct": 6.4, "vol_pct": 8.56, "nominal_100pct": {"kg_h": 26600, "m3_h_15C": 39.7}, "max_105pct": {"kg_h": 27930, "m3_h_15C": 41.7}},
+        {"fluid": "Heavy Naphtha", "wt_pct": 9.6, "vol_pct": 11.13, "nominal_100pct": {"kg_h": 39900, "m3_h_15C": 51.6}, "max_105pct": {"kg_h": 41900, "m3_h_15C": 54.2}},
+        {"fluid": "Kerosene", "wt_pct": 7.3, "vol_pct": 8.11, "nominal_100pct": {"kg_h": 30330, "m3_h_15C": 37.6}, "max_105pct": {"kg_h": 31850, "m3_h_15C": 39.5}},
+        {"fluid": "Light Gas Oil", "wt_pct": 14.59, "vol_pct": 15.42, "nominal_100pct": {"kg_h": 60650, "m3_h_15C": 71.5}, "max_105pct": {"kg_h": 63680, "m3_h_15C": 75.1}},
+        {"fluid": "Heavy Gas Oil", "wt_pct": 3.1, "vol_pct": 2.97, "nominal_100pct": {"kg_h": 12850, "m3_h_15C": 13.8}, "max_105pct": {"kg_h": 13494, "m3_h_15C": 14.5}},
+        {"fluid": "Atm. Residue (Red. Crude)", "wt_pct": 57.58, "vol_pct": 51.74, "nominal_100pct": {"kg_h": 239320, "m3_h_15C": 239.9}, "max_105pct": {"kg_h": 251286, "m3_h_15C": 251.9}}
+      ]
+    }
+  },
+  "usage": {
+    "oil_manager_input": false,
+    "yield_check_after_characterize": true,
+    "hysys_feed_rate_seed": "Use volumetric_crude_rate_m3_h_15C.nominal_100pct or case total mass"
+  }
+}

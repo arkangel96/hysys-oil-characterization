@@ -1,0 +1,87 @@
+{
+  "document": "ICDL 001 C 11 T 001 H — TECHNICAL PROPOSAL",
+  "section": "2.6 BATTERY LIMIT CONDITIONS REV. B",
+  "project": "CDU 70000 BPSD + LPG UNIT",
+  "client": "MRC",
+  "pressure_unit": "kg/cm2_g",
+  "temperature_unit": "C",
+  "streams": [
+    {
+      "fluid": "Crude Oil",
+      "temperature_C": {"norm": 40, "min": 10, "max": null},
+      "pressure_kg_cm2_g": 3.0,
+      "role": "FEED"
+    },
+    {
+      "fluid": "LPG",
+      "temperature_C": {"norm": 40, "min": null, "max": null},
+      "pressure_kg_cm2_g": 12.0,
+      "role": "PRODUCT"
+    },
+    {
+      "fluid": "Light Naphtha",
+      "temperature_C": {"norm": 38, "min": null, "max": null},
+      "pressure_kg_cm2_g": 4.0,
+      "role": "PRODUCT"
+    },
+    {
+      "fluid": "Heavy Naphtha",
+      "temperature_C": {"norm": 40, "min": null, "max": null},
+      "pressure_kg_cm2_g": 4.0,
+      "role": "PRODUCT"
+    },
+    {
+      "fluid": "Heavy Naphtha (hot stream)",
+      "temperature_C": {"norm": null, "min": 98, "max": 101},
+      "pressure_kg_cm2_g": 4.0,
+      "role": "PRODUCT_HOT"
+    },
+    {
+      "fluid": "Kerosene",
+      "temperature_C": {"norm": 40, "min": null, "max": null},
+      "pressure_kg_cm2_g": 3.0,
+      "role": "PRODUCT"
+    },
+    {
+      "fluid": "Kerosene (hot stream)",
+      "temperature_C": {"norm": null, "min": 70, "max": 84},
+      "pressure_kg_cm2_g": 3.0,
+      "role": "PRODUCT_HOT"
+    },
+    {
+      "fluid": "Light Gas Oil",
+      "temperature_C": {"norm": 45, "min": null, "max": null},
+      "pressure_kg_cm2_g": 4.0,
+      "role": "PRODUCT"
+    },
+    {
+      "fluid": "Light Gas Oil (hot stream)",
+      "temperature_C": {"norm": null, "min": 106, "max": 118},
+      "pressure_kg_cm2_g": 4.0,
+      "role": "PRODUCT_HOT"
+    },
+    {
+      "fluid": "Heavy Gas Oil",
+      "temperature_C": {"norm": 45, "min": null, "max": null},
+      "pressure_kg_cm2_g": 3.0,
+      "role": "PRODUCT"
+    },
+    {
+      "fluid": "Atm. Residue",
+      "temperature_C": {"norm": 90, "min": null, "max": null},
+      "pressure_kg_cm2_g": 5.0,
+      "role": "PRODUCT"
+    }
+  ],
+  "feed_seed": {
+    "stream_name": "FEED",
+    "temperature_C": 40,
+    "pressure_kg_cm2_g": 3.0,
+    "pressure_note": "≈ 2.94 barg",
+    "rate_from": "mrc_material_balance.json volumetric_crude_rate_m3_h_15C.nominal_100pct"
+  },
+  "usage": {
+    "oil_manager_input": false,
+    "hysys_stream_conditions": true
+  }
+}

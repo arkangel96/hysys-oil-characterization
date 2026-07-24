@@ -1,36 +1,37 @@
-# COM discovery — Oil Manager / assay
+# COM discovery — Oil Manager / assay (Aspen-informed)
 
-**Status:** starter checklist  
-**Goal:** map read-only COM paths for Oils, Assays, Blends, hypocomponents on your HYSYS build.
+**Coded map:** `aspen_intelligence.py` (from Aspen `xhysys` Oil Manager / Assay enums)  
+**Notes:** `docs/intelligence/aspen/README.md`
 
 ## Probe already coded
 
-`HysysController.probe_oil_manager()` tries on `case.BasisManager`:
+`HysysController.probe_oil_manager()` walks Aspen-informed paths:
 
-- `Oils`
-- `OilManager`
-- `Assays`
-- `Blends`
+- `case.OilManager`
+- `case.BasisManager.OilManager`
+- `case.BasisManager.Oils`
+- `case.BasisManager.Assays`
 
-Results appear on the PE board / activity log after Connect.
+When `OilManager` is present, it reports readable members from:
 
-## Next discovery steps (manual + script)
+`Blends`, `CorrelationSets`, `DefaultD2887Type`, `DefaultD86Type`,
+`FBPCutPoint`, `FBPCutPointValue`, `IBPCutPoint`, `IBPCutPointValue`,
+`IbpFbpBasis`, `SetAssociatedFluidPackage`
 
-1. With a characterized crude case open, Connect this app and note the probe string.
-2. In a Python REPL (same venv), walk BasisManager attributes and dump `.Count` / `.Name`.
-3. Record working ProgID / member names in a table below (fill as you discover):
+## Recommended entry enums (PE default for MRC wt% assays)
 
-| Object path | Readable? | Notes |
-|-------------|-----------|-------|
-| BasisManager.Oils | | |
-| BasisManager.OilManager | | |
-| Assay.TBP / distillation | | |
-| Assay density / light ends | | |
-| Blend composition | | |
-| Install / attach to stream | | |
+| Setting | Name | Value |
+|---------|------|-------|
+| AssayType | `at_TBP` | 0 |
+| AssayBasis | `ab_MassFraction` | -3 |
+| LightEndsCalc | `alect_UserInputLightEnds` | -1 |
+| LightEndsCompBasis | `alecb_MassFraction` | -3 |
+| Extrapolation | **do not apply silently** | Aspen offers 1/2/3 |
+
+Use `recommend_hysys_entry(assay)` for per-assay plan.
 
 ## Rules
 
-- Discovery is **read-only** until inventory row OC-04 + OC write path exists.
-- AspenTech COM names vary by release — always try variants.
+- Discovery is **read-only** until inventory allows COM write.
 - Never save the case from automation during discovery.
+- Aspen CHM originals stay in `from aspen doc/` — do not commit extracts.

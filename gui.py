@@ -19,36 +19,57 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from assay_engine import diagnose_case, format_pe_board
+from assay_engine import (
+    diagnose_assay,
+    diagnose_case,
+    diagnose_mrc_pack,
+    format_pe_board,
+    load_assay,
+)
 from hysys_api import HysysController, HysysError
 from models import CaseSnapshot
+from pe_identity import PRODUCT_NAME, PRODUCT_VERSION, pe_banner
 
 
 class OilCharacterizationAssist(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Oil Characterization Assist v0.1")
-        self.resize(1100, 700)
+        self.setWindowTitle(
+            f"{PRODUCT_NAME} v{PRODUCT_VERSION} — Expert Oil Characterization PE"
+        )
+        self.resize(1100, 720)
         self.hysys = HysysController()
         self.snapshot: CaseSnapshot | None = None
+        self._assay_mode = "none"
         self._build_ui()
-        self._set_status("Disconnected — open HYSYS, then Connect.")
+        self._set_status(
+            "Default: expert Aspen HYSYS oil-characterization PE — Load MRC Pack or Connect."
+        )
 
     def _build_ui(self) -> None:
         root = QWidget()
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
 
-        title = QLabel("Oil Characterization Assist")
+        title = QLabel(PRODUCT_NAME)
         title.setFont(QFont("Segoe UI Semibold", 14))
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Assay / Oil Manager assist — separate from CDU Assist. "
-            "Intelligence grows in docs/intelligence/ + assay_engine.py."
+            "Default role: expert Aspen HYSYS process engineer — oil characterization "
+            "(Oil Manager → NBP/hypos → FEED). Peer to CDU PE. Separate from CDU Assist tower trials."
         )
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
+
+        assay_bar = QHBoxLayout()
+        self.btn_mrc = QPushButton("Load MRC Pack")
+        self.btn_basrah = QPushButton("QA Basrah")
+        self.btn_mishrif = QPushButton("QA Mishrif")
+        for btn in (self.btn_mrc, self.btn_basrah, self.btn_mishrif):
+            assay_bar.addWidget(btn)
+        assay_bar.addStretch(1)
+        layout.addLayout(assay_bar)
 
         toolbar = QHBoxLayout()
         self.btn_connect = QPushButton("Connect")
@@ -75,7 +96,7 @@ class OilCharacterizationAssist(QMainWindow):
 
         left = QWidget()
         left_layout = QVBoxLayout(left)
-        left_layout.addWidget(QLabel("Material streams"))
+        left_layout.addWidget(QLabel("Material streams (HYSYS)"))
         self.stream_table = QTableWidget(0, 5)
         self.stream_table.setHorizontalHeaderLabels(
             ["Stream", "T", "P", "MolarFlow", "VF"]
@@ -103,6 +124,9 @@ class OilCharacterizationAssist(QMainWindow):
         splitter.addWidget(right)
         splitter.setSizes([550, 550])
 
+        self.btn_mrc.clicked.connect(self.on_load_mrc_pack)
+        self.btn_basrah.clicked.connect(lambda: self.on_qa_crude("BASRAH"))
+        self.btn_mishrif.clicked.connect(lambda: self.on_qa_crude("MISHRIF"))
         self.btn_connect.clicked.connect(self.on_connect)
         self.btn_open.clicked.connect(self.on_open_case)
         self.btn_refresh.clicked.connect(self.on_refresh)
@@ -118,11 +142,42 @@ class OilCharacterizationAssist(QMainWindow):
         self.log.append(text)
 
     def _refresh_pe_board(self) -> None:
-        diagnosis = diagnose_case(self.snapshot)
+        if self._assay_mode == "mrc":
+            diagnosis = diagnose_mrc_pack()
+        elif self._assay_mode in {"BASRAH", "MISHRIF"}:
+            diagnosis = diagnose_assay(load_assay(self._assay_mode))
+        else:
+            diagnosis = diagnose_case(self.snapshot)
         self.pe_board.setPlainText(format_pe_board(diagnosis))
+
+    def on_load_mrc_pack(self) -> None:
+        try:
+            diagnosis = diagnose_mrc_pack()
+            self._assay_mode = "mrc"
+            self.pe_board.setPlainText(format_pe_board(diagnosis))
+            self._set_status(f"MRC pack QA — state {diagnosis.state}")
+            self._log(f"Loaded MRC pack — state {diagnosis.state}")
+        except Exception as exc:
+            QMessageBox.warning(self, "MRC pack failed", str(exc))
+            self._log(f"ERROR: {exc}")
+
+    def on_qa_crude(self, crude_id: str) -> None:
+        try:
+            assay = load_assay(crude_id)
+            diagnosis = diagnose_assay(assay)
+            self._assay_mode = crude_id
+            self.pe_board.setPlainText(format_pe_board(diagnosis))
+            self._set_status(f"{crude_id} assay QA — state {diagnosis.state}")
+            self._log(f"QA {crude_id} — state {diagnosis.state}")
+            if diagnosis.qa and diagnosis.qa.flags:
+                self._log("Flags: " + ", ".join(diagnosis.qa.flags))
+        except Exception as exc:
+            QMessageBox.warning(self, "Assay QA failed", str(exc))
+            self._log(f"ERROR: {exc}")
 
     def _apply_snapshot(self, snapshot: CaseSnapshot) -> None:
         self.snapshot = snapshot
+        self._assay_mode = "hysys"
         self.stream_table.setRowCount(0)
         for stream in snapshot.streams:
             row = self.stream_table.rowCount()
@@ -207,6 +262,7 @@ class OilCharacterizationAssist(QMainWindow):
     def on_disconnect(self) -> None:
         self.hysys.disconnect()
         self.snapshot = None
+        self._assay_mode = "none"
         self.stream_table.setRowCount(0)
         self.comp_box.clear()
         self._refresh_pe_board()
