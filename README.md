@@ -52,6 +52,7 @@ Or double-click `Open Oil Characterization Assist.bat`.
 
 ## Discussion / intelligence
 
-- Session notes (what we discussed): [`docs/DISCUSSION_HISTORY_2026-07-23.md`](docs/DISCUSSION_HISTORY_2026-07-23.md)
+- Session notes: [`docs/DISCUSSION_HISTORY_2026-07-23.md`](docs/DISCUSSION_HISTORY_2026-07-23.md)
+- Session notes (COM / from-scratch / pause): [`docs/DISCUSSION_HISTORY_2026-07-24.md`](docs/DISCUSSION_HISTORY_2026-07-24.md)
 - User intelligence pack: [`docs/intelligence/user_drop/`](docs/intelligence/user_drop/)
 - Inventory: [`docs/INTELLIGENCE_INVENTORY.md`](docs/INTELLIGENCE_INVENTORY.md)
