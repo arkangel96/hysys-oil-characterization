@@ -5,16 +5,20 @@ External COM assist for **crude assay / Oil Manager** in Aspen HYSYS.
 
 ```text
 PyQt5 desktop UI (gui.py)
-    -> assay_engine.py (PE states O0–O4 / OX)
+    -> assay_engine.py (PE states O0–O4 / OX) + handoff.py (O4 token)
+    -> aspen_intelligence.py (enums / COM capability map)
     -> HYSYS COM adapter (hysys_api.py)
-        -> Aspen HYSYS case (read-first; no auto-save)
+        -> Aspen HYSYS case (READ-first; gated writes; no auto-save)
 ```
+
+**Code root:** edit repo root modules only. Nested `oil_characterization/` is a duplicate.
 
 ## Safety
 
 - Never auto-save `.hsc`
 - No silent Oil Manager / property-package rewrite
-- Writes only when explicitly designed later with snapshot/restore
+- `allow_COM_write=false` API guard on all `com_*` write stubs
+- O4 handoff is a JSON file only — no CDU import / no auto-launch
 
 ## Relationship to CDU Assist
 

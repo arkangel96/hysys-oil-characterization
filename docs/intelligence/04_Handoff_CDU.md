@@ -1,15 +1,16 @@
 # OC-05 — Hand-off to CDU Assist
 
-**Status:** PLANNED  
-**Inventory:** OC-05
+**Status:** CODED  
+**Inventory:** OC-05  
+**Code:** `handoff.py` → GUI **Export handoff_o4.json**
 
-When state reaches **O4**:
+When complementary O4 gate passes (assay O2/O3 **and** oil_installed **and** feed_attached **and** hypo_reviewed):
 
-1. Record assay tag / oil name / hypo count / feed stream name
-2. User opens **CDU Assist** on the same case
+1. Assist writes `handoff_o4.json` (never onto a `.hsc`)
+2. User opens **CDU Assist** on the **same** HYSYS case
 3. CDU Assist treats feed as credible unless user overrides
 
-Optional later: write a small `handoff_o4.json` next to the case (never overwrite `.hsc`).
+## Payload (minimal + verify fields)
 
 ```json
 {
@@ -18,8 +19,24 @@ Optional later: write a small `handoff_o4.json` next to the case (never overwrit
   "case_title": "",
   "feed_stream": "",
   "assay_tag": "",
-  "notes": ""
+  "oil_installed": true,
+  "feed_attached": true,
+  "hypo_reviewed": true,
+  "notes": "",
+  "cdu_assist": {
+    "auto_launch": false,
+    "import_code": false
+  }
 }
 ```
 
-Do not auto-launch CDU Assist until both products are stable.
+Richer optional fields (bulk/tbp summaries, flags) are included by `build_handoff_payload`.
+
+## Rules
+
+- Do **not** auto-launch CDU Assist
+- Do **not** import sibling CDU code
+- Do **not** overwrite `.hsc`
+- Current MRC proposal TBP → **OX** cannot fake O4 until residue coverage or a stronger assay
+
+CDU Assist receive-side gate remains a future thin check in the sibling repo.

@@ -11,12 +11,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from models import CaseSnapshot
-
-from complementary_rules import apply_complementary_gate, format_complementary_block
 from aspen_intelligence import format_aspen_block
+from complementary_rules import apply_complementary_gate, format_complementary_block
+from models import CaseSnapshot
 from pe_identity import (
-    PRODUCT_NAME,
     expert_next_actions,
     format_identity_block,
     pe_banner,
@@ -32,6 +30,8 @@ STATE_LABELS = {
     "O4": "Assay accepted — CDU hand-off OK",
     "OX": "Blocked — contradictory / incomplete characterization",
 }
+
+_STATE_RANK = {"O0": 0, "O1": 1, "O2": 2, "O3": 3, "O4": 4, "OX": 99}
 
 
 @dataclass
@@ -52,6 +52,11 @@ class AssayDiagnosis:
     qa: QAResult | None = None
     assay_id: str | None = None
     assay: dict[str, Any] | None = None
+    oil_installed: bool = False
+    feed_attached: bool = False
+    hypo_reviewed: bool = False
+    feed_stream: str = ""
+    case_title: str = ""
 
 
 def cases_dir() -> Path:
@@ -176,6 +181,115 @@ def _has_viscosity(bulk: dict[str, Any]) -> bool:
     )
 
 
+def check_blend_fraction(assay: dict[str, Any]) -> QAResult:
+    """Boundary assays must not invent a blend %."""
+    design = assay.get("design") or {}
+    blend = design.get("blend_fraction", design.get("blend_pct"))
+    role = str(design.get("role") or "").upper()
+    if blend is not None and role in {"LIGHT_BOUND", "HEAVY_BOUND", "BOUNDARY", "LIGHT", "HEAVY"}:
+        return QAResult(
+            "FAIL",
+            flags=["INVENTED_BLEND_FRACTION_ON_BOUNDARY"],
+            metrics={"blend_fraction": blend, "role": role},
+        )
+    if blend is not None:
+        return QAResult(
+            "PASS",
+            warnings=["BLEND_FRACTION_PRESENT_VERIFY_LICENSOR"],
+            metrics={"blend_fraction": blend},
+        )
+    return QAResult("PASS", metrics={"blend_fraction": None})
+
+
+def material_balance_yield_check(
+    crude_id: str,
+    support: dict[str, Any] | None = None,
+) -> QAResult:
+    """Yield check vs MRC material balance — never an Oil Manager input."""
+    support = support or load_mrc_support()
+    mb = support.get("material_balance") or {}
+    cases = mb.get("cases") or {}
+    key = crude_id.strip().upper()
+    case = cases.get(key)
+    if not case:
+        return QAResult("FAIL", flags=["MB_CASE_NOT_FOUND"], metrics={"crude_id": key})
+
+    streams = case.get("streams") or []
+    wt_sum = 0.0
+    named: list[tuple[str, float]] = []
+    for row in streams:
+        wt = row.get("wt_pct")
+        if wt is None:
+            continue
+        wt_sum += float(wt)
+        named.append((str(row.get("fluid") or "?"), float(wt)))
+
+    flags: list[str] = []
+    warnings: list[str] = []
+    if abs(wt_sum - 100.0) > 0.5:
+        flags.append("MB_WT_PCT_SUM_NOT_100")
+    elif abs(wt_sum - 100.0) > 0.05:
+        warnings.append(f"MB_WT_PCT_SUM={wt_sum:.3f}")
+
+    residue = next((w for n, w in named if "residue" in n.lower()), None)
+    if residue is not None and residue < 20:
+        warnings.append("MB_RESIDUE_YIELD_LOW_CHECK_TBP")
+
+    usage = mb.get("usage") or {}
+    if usage.get("oil_manager_input"):
+        flags.append("MB_MARKED_AS_OIL_MANAGER_INPUT")
+
+    return QAResult(
+        "FAIL" if flags else "PASS",
+        flags=flags,
+        warnings=warnings,
+        metrics={
+            "crude_id": key,
+            "wt_pct_sum": wt_sum,
+            "stream_count": len(named),
+            "yields_wt_pct": dict(named),
+            "oil_manager_input": bool(usage.get("oil_manager_input")),
+            "yield_check_after_characterize": bool(
+                usage.get("yield_check_after_characterize", True)
+            ),
+        },
+    )
+
+
+def check_feed_seed_vs_case(
+    snapshot: CaseSnapshot | None,
+    support: dict[str, Any] | None = None,
+) -> QAResult:
+    """Compare battery-limit FEED seed name/conditions to live case (when connected)."""
+    if snapshot is None:
+        return QAResult("PASS", warnings=["FEED_SEED_SKIPPED_NO_CASE"])
+
+    support = support or load_mrc_support()
+    seed = (support.get("battery_limits") or {}).get("feed_seed") or {}
+    expected = str(seed.get("stream_name") or "FEED")
+    live_names = {s.name for s in snapshot.streams}
+    feed = snapshot.feed_evidence.feed_stream or ""
+
+    flags: list[str] = []
+    warnings: list[str] = []
+    if expected not in live_names and feed and feed not in (expected,):
+        # Accept Raw Crude as FEED alias
+        aliases = {"FEED", "Raw Crude", "RawCrude", "CRUDE", "Crude"}
+        if not (live_names & aliases):
+            flags.append("FEED_SEED_STREAM_MISSING")
+        else:
+            warnings.append(f"FEED_SEED_ALIAS_USED expected={expected} live={feed}")
+    elif expected in live_names:
+        warnings.append(f"FEED_SEED_MATCH={expected}")
+
+    return QAResult(
+        "FAIL" if flags else "PASS",
+        flags=flags,
+        warnings=warnings,
+        metrics={"expected_stream": expected, "live_feed": feed, "live_streams": sorted(live_names)},
+    )
+
+
 def completeness_check(assay: dict[str, Any]) -> QAResult:
     flags: list[str] = []
     warnings: list[str] = []
@@ -195,17 +309,24 @@ def completeness_check(assay: dict[str, Any]) -> QAResult:
 
     tbp = validate_tbp(assay)
     le = normalize_light_ends(assay)
+    blend = check_blend_fraction(assay)
     flags.extend(tbp.flags)
     flags.extend(le.flags)
+    flags.extend(blend.flags)
     warnings.extend(tbp.warnings)
     warnings.extend(le.warnings)
+    warnings.extend(blend.warnings)
 
     if flags:
         return QAResult(
             "OX",
             flags=sorted(set(flags)),
             warnings=sorted(set(warnings)),
-            metrics={"tbp": tbp.metrics, "light_ends": le.metrics},
+            metrics={
+                "tbp": tbp.metrics,
+                "light_ends": le.metrics,
+                "blend": blend.metrics,
+            },
         )
 
     strong = [
@@ -233,6 +354,7 @@ def completeness_check(assay: dict[str, Any]) -> QAResult:
             "strong_field_coverage_percent": coverage,
             "tbp": tbp.metrics,
             "light_ends": le.metrics,
+            "blend": blend.metrics,
         },
     )
 
@@ -255,7 +377,6 @@ def compare_boundary_tbp(light: dict[str, Any], heavy: dict[str, Any]) -> QAResu
 
     inversions = 0
     for t in common:
-        # Allow tiny tolerance; at 40 C proposal has slight Mishrif > Basrah
         if light_pts[t] + 0.5 < heavy_pts[t]:
             inversions += 1
 
@@ -285,6 +406,7 @@ def diagnose_assay(assay: dict[str, Any]) -> AssayDiagnosis:
         f"Role: {role}",
         f"API / SG: {bulk.get('api_gravity')} / {bulk.get('specific_gravity_15C')}",
         f"QA status: {qa.status}",
+        f"Blend fraction: {(assay.get('design') or {}).get('blend_fraction')}",
     ]
     if qa.flags:
         evidence.append("Flags: " + ", ".join(qa.flags))
@@ -300,51 +422,34 @@ def diagnose_assay(assay: dict[str, Any]) -> AssayDiagnosis:
     if le_m.get("raw_sum") is not None:
         evidence.append(f"LE cut sum: {le_m.get('raw_sum'):.2f} wt%")
 
-    if qa.status == "OX":
-        return AssayDiagnosis(
-            state="OX",
-            summary=STATE_LABELS["OX"],
-            evidence=evidence,
-            next_actions=expert_next_actions("OX"),
-            qa=qa,
-            assay_id=crude,
-            assay=assay,
-        )
-
-    if qa.status == "O3":
-        return AssayDiagnosis(
-            state="O3",
-            summary=STATE_LABELS["O3"],
-            evidence=evidence,
-            next_actions=expert_next_actions("O3"),
-            qa=qa,
-            assay_id=crude,
-            assay=assay,
-        )
-
+    state = "OX" if qa.status == "OX" else ("O3" if qa.status == "O3" else "O2")
     return AssayDiagnosis(
-        state="O2",
-        summary=STATE_LABELS["O2"],
+        state=state,
+        summary=STATE_LABELS[state],
         evidence=evidence,
-        next_actions=expert_next_actions("O2"),
+        next_actions=expert_next_actions(state),
         qa=qa,
         assay_id=crude,
         assay=assay,
     )
 
 
-def diagnose_mrc_pack() -> AssayDiagnosis:
-    """Load both boundary assays + support files; return combined PE board diagnosis."""
+def diagnose_mrc_pack(snapshot: CaseSnapshot | None = None) -> AssayDiagnosis:
+    """Load both boundary assays + support files; optional live HYSYS merge."""
     basrah = load_assay("BASRAH")
     mishrif = load_assay("MISHRIF")
     support = load_mrc_support()
     d_b = diagnose_assay(basrah)
     d_m = diagnose_assay(mishrif)
     boundary = compare_boundary_tbp(basrah, mishrif)
+    mb_b = material_balance_yield_check("BASRAH", support)
+    mb_m = material_balance_yield_check("MISHRIF", support)
+    feed_seed = check_feed_seed_vs_case(snapshot, support)
 
     feed = (support["battery_limits"] or {}).get("feed_seed") or {}
     mb = support["material_balance"] or {}
     rate = (mb.get("volumetric_crude_rate_m3_h_15C") or {}).get("nominal_100pct")
+    targets = support.get("final_targets") or {}
 
     evidence = [
         "MRC pack loaded from docs/intelligence/cases/",
@@ -352,14 +457,26 @@ def diagnose_mrc_pack() -> AssayDiagnosis:
         f"Mishrif QA: {d_m.state} — flags={d_m.qa.flags if d_m.qa else []}",
         f"Boundary TBP compare: {boundary.status} "
         f"(inversions={boundary.metrics.get('inversions')})",
-        f"FEED seed: T={feed.get('temperature_C')} C, "
-        f"P={feed.get('pressure_kg_cm2_g')} kg/cm2 g, "
-        f"rate={rate} m3/h @15C",
+        f"MB yield check Basrah: {mb_b.status} sum={mb_b.metrics.get('wt_pct_sum')}",
+        f"MB yield check Mishrif: {mb_m.status} sum={mb_m.metrics.get('wt_pct_sum')}",
+        f"FEED seed: name={feed.get('stream_name')}, T={feed.get('temperature_C')} C, "
+        f"P={feed.get('pressure_kg_cm2_g')} kg/cm2 g, rate={rate} m3/h @15C",
+        "FINAL_TARGETS = CDU storage only — not Oil Manager inputs "
+        f"(keys={list(targets.keys())[:6]}…)" if targets else "FINAL_TARGETS loaded",
     ]
+    if feed_seed.warnings:
+        evidence.append("Feed seed: " + ", ".join(feed_seed.warnings))
+    if feed_seed.flags:
+        evidence.append("Feed seed flags: " + ", ".join(feed_seed.flags))
     if boundary.warnings:
         evidence.append("Boundary warnings: " + ", ".join(boundary.warnings))
     if boundary.flags:
         evidence.append("Boundary flags: " + ", ".join(boundary.flags))
+    for mb_qa in (mb_b, mb_m):
+        if mb_qa.flags:
+            evidence.append("MB flags: " + ", ".join(mb_qa.flags))
+        if mb_qa.warnings:
+            evidence.append("MB warnings: " + ", ".join(mb_qa.warnings))
 
     worst = "OX" if "OX" in {d_b.state, d_m.state} or boundary.status == "FAIL" else d_b.state
     if d_m.state == "OX" or d_b.state == "OX":
@@ -367,10 +484,28 @@ def diagnose_mrc_pack() -> AssayDiagnosis:
     elif d_b.state == "O2" or d_m.state == "O2":
         worst = "O2"
 
+    oil_installed = False
+    feed_attached = False
+    feed_stream = ""
+    case_title = ""
+    if snapshot is not None:
+        live = diagnose_case(snapshot)
+        evidence.append("--- Live HYSYS merge ---")
+        evidence.extend(live.evidence)
+        oil_installed = live.oil_installed
+        feed_attached = live.feed_attached
+        feed_stream = live.feed_stream
+        case_title = live.case_title
+        # Assay honesty wins: OX stays OX even if FEED looks green
+        if worst != "OX" and _STATE_RANK.get(live.state, 0) > _STATE_RANK.get(worst, 0):
+            if live.state != "OX":
+                worst = live.state if live.state in {"O1", "O2", "O3"} else worst
+
     actions = [
         *expert_next_actions(worst),
         "Use basrah_assay.json / mishrif_assay.json for Oil Manager entry.",
         "Material balance / FINAL_TARGETS are yield & CDU checks — not assay inputs.",
+        "Basrah/Mishrif are design bounds — do not invent blend %.",
     ]
     return AssayDiagnosis(
         state=worst,
@@ -380,11 +515,20 @@ def diagnose_mrc_pack() -> AssayDiagnosis:
         handoff_to_cdu=False,
         assay_id="MRC_PACK",
         assay=basrah,
+        oil_installed=oil_installed,
+        feed_attached=feed_attached,
+        feed_stream=feed_stream,
+        case_title=case_title,
+        qa=d_b.qa,
     )
 
 
-def diagnose_case(snapshot: CaseSnapshot | None) -> AssayDiagnosis:
-    """HYSYS live-case heuristics (COM). Separate from assay-JSON QA."""
+def diagnose_case(
+    snapshot: CaseSnapshot | None,
+    *,
+    hypo_reviewed: bool = False,
+) -> AssayDiagnosis:
+    """HYSYS live-case diagnosis from structured COM reads."""
     if snapshot is None:
         return AssayDiagnosis(
             state="O0",
@@ -393,71 +537,163 @@ def diagnose_case(snapshot: CaseSnapshot | None) -> AssayDiagnosis:
             next_actions=expert_next_actions("O0"),
         )
 
+    oil = snapshot.oil_manager
+    ev = snapshot.feed_evidence
+    comp = snapshot.feed_composition
     evidence: list[str] = [
         f"Case: {snapshot.case_title or '(untitled)'}",
         f"Components: {len(snapshot.component_names)}",
         f"Material streams: {len(snapshot.streams)}",
-        f"Oil Manager probe: {snapshot.oil_manager_hint}",
+        f"Oil Manager: found={oil.found} path={oil.path or '(none)'}",
+        f"Assays: {oil.assay_count} | Oils: {len(oil.oil_names)} | Blends: {oil.blend_count}",
+        f"FEED stream: {ev.feed_stream or '(none)'}",
+        f"FEED evidence: installed={ev.oil_installed} attached={ev.feed_attached} "
+        f"NBP={ev.nbp_count} lights={ev.light_count} blend_ready={ev.blend_ready}",
     ]
-    n_comp = len(snapshot.component_names)
-    n_streams = len(snapshot.streams)
-    oil_hint = (snapshot.oil_manager_hint or "").lower()
+    if oil.assay_names:
+        evidence.append("Assay names: " + ", ".join(oil.assay_names[:8]))
+    if oil.blends:
+        for blend in oil.blends[:5]:
+            evidence.append(
+                f"Blend {blend.name}: ready={blend.is_ready_to_install} "
+                f"assays={blend.assay_names}"
+            )
+    if comp is not None:
+        evidence.append(
+            f"Composition basis={comp.basis} comps={len(comp.components)} "
+            f"lights={comp.light_count} nbp={comp.nbp_count}"
+        )
+        if comp.error:
+            evidence.append(f"Composition note: {comp.error}")
+    evidence.extend(ev.notes)
+    if oil.notes:
+        evidence.append("OM notes: " + "; ".join(oil.notes[:4]))
 
+    n_streams = len(snapshot.streams)
     if n_streams == 0:
         return AssayDiagnosis(
             state="OX",
             summary=STATE_LABELS["OX"],
             evidence=evidence + ["No material streams visible."],
             next_actions=expert_next_actions("OX"),
+            case_title=snapshot.case_title,
         )
 
-    if "count=" in oil_hint and "count=0" in oil_hint.replace(" ", "").lower():
-        return AssayDiagnosis(
-            state="O2",
-            summary=STATE_LABELS["O2"],
-            evidence=evidence + ["Oil/assay collection reports Count=0."],
-            next_actions=expert_next_actions("O2"),
-        )
-
-    if "no oils/oilmanager" in oil_hint or "not found" in oil_hint:
+    if not oil.found and oil.assay_count == 0 and not oil.oil_names:
         return AssayDiagnosis(
             state="O1",
             summary=STATE_LABELS["O1"],
             evidence=evidence + ["Oil Manager COM path not discovered for this build."],
             next_actions=expert_next_actions("O1"),
+            case_title=snapshot.case_title,
+            feed_stream=ev.feed_stream,
         )
 
-    if n_comp < 5:
-        return AssayDiagnosis(
-            state="O2",
-            summary=STATE_LABELS["O2"],
-            evidence=evidence + [f"Few fluid-package components ({n_comp})."],
-            next_actions=expert_next_actions("O2"),
-        )
+    oil_installed = ev.oil_installed
+    feed_attached = ev.feed_attached
 
-    if n_comp >= 20:
-        return AssayDiagnosis(
-            state="O3",
-            summary=STATE_LABELS["O3"],
-            evidence=evidence + ["Component count suggests characterized package."],
-            next_actions=expert_next_actions("O3"),
-        )
+    if oil_installed and feed_attached:
+        state = "O3"
+        evidence.append("Live FEED shows lights + NBP slate — characterization verify OK.")
+    elif oil.assay_count > 0 or oil.blend_count > 0 or oil.oil_names:
+        state = "O2"
+        evidence.append("Assay/blend inventory present — complete characterize → install → attach.")
+    elif len(snapshot.component_names) >= 5:
+        state = "O2"
+        evidence.append("FP has components but Oil Manager inventory thin.")
+    else:
+        state = "O1"
 
     return AssayDiagnosis(
-        state="O1",
-        summary=STATE_LABELS["O1"],
+        state=state,
+        summary=STATE_LABELS[state],
         evidence=evidence,
-        next_actions=expert_next_actions("O1"),
+        next_actions=expert_next_actions(state),
+        oil_installed=oil_installed,
+        feed_attached=feed_attached,
+        hypo_reviewed=hypo_reviewed,
+        feed_stream=ev.feed_stream,
+        case_title=snapshot.case_title,
     )
 
 
+def merge_diagnosis(
+    assay_diag: AssayDiagnosis,
+    case_diag: AssayDiagnosis | None,
+    *,
+    hypo_reviewed: bool = False,
+) -> AssayDiagnosis:
+    """Combine assay QA with live HYSYS verify flags."""
+    if case_diag is None:
+        assay_diag.hypo_reviewed = hypo_reviewed
+        return assay_diag
+
+    state = assay_diag.state
+    if state != "OX":
+        # Live install evidence can raise O2→O3 but never clear OX
+        if case_diag.state == "O3" and state in {"O2", "O3"}:
+            state = "O3"
+        elif case_diag.state == "O2" and state == "O1":
+            state = "O2"
+
+    evidence = list(assay_diag.evidence) + ["--- Live HYSYS ---"] + list(case_diag.evidence)
+    diag = AssayDiagnosis(
+        state=state,
+        summary=STATE_LABELS.get(state, state),
+        evidence=evidence,
+        next_actions=expert_next_actions(state),
+        handoff_to_cdu=False,
+        qa=assay_diag.qa,
+        assay_id=assay_diag.assay_id,
+        assay=assay_diag.assay,
+        oil_installed=case_diag.oil_installed,
+        feed_attached=case_diag.feed_attached,
+        hypo_reviewed=hypo_reviewed,
+        feed_stream=case_diag.feed_stream,
+        case_title=case_diag.case_title,
+    )
+    return finalize_o4(diag)
+
+
+def finalize_o4(diagnosis: AssayDiagnosis) -> AssayDiagnosis:
+    """Apply complementary O4 gate; set handoff_to_cdu when allowed."""
+    if diagnosis.state == "O4" and diagnosis.handoff_to_cdu:
+        return diagnosis
+
+    flags = list(diagnosis.qa.flags) if diagnosis.qa else []
+    # Gate checks assay strength O2/O3; O4 is the promotion result
+    qa_for_gate = diagnosis.state if diagnosis.state != "O4" else "O3"
+    if qa_for_gate not in {"O0", "O1", "O2", "O3", "OX"}:
+        qa_for_gate = "OX"
+    gate = apply_complementary_gate(
+        qa_status=qa_for_gate,
+        flags=flags,
+        hypo_reviewed=diagnosis.hypo_reviewed,
+        feed_attached=diagnosis.feed_attached,
+        oil_installed=diagnosis.oil_installed,
+    )
+    if not gate.o4_blocked:
+        diagnosis.state = "O4"
+        diagnosis.summary = STATE_LABELS["O4"]
+        diagnosis.handoff_to_cdu = True
+        diagnosis.next_actions = expert_next_actions("O4")
+    else:
+        diagnosis.handoff_to_cdu = False
+    return diagnosis
+
+
 def format_pe_board(diagnosis: AssayDiagnosis) -> str:
+    diagnosis = finalize_o4(diagnosis)
     lines = [
         pe_banner(),
         "",
         "=== Oil Characterization — PE board ===",
         f"State: {diagnosis.state} — {diagnosis.summary}",
         f"Assay id: {diagnosis.assay_id or '(none)'}",
+        f"Case: {diagnosis.case_title or '(none)'}",
+        f"FEED: {diagnosis.feed_stream or '(none)'}",
+        f"Install/attach/hypo: {diagnosis.oil_installed}/"
+        f"{diagnosis.feed_attached}/{diagnosis.hypo_reviewed}",
         f"CDU hand-off OK: {'YES' if diagnosis.handoff_to_cdu else 'NO (not yet)'}",
         "",
         "Evidence:",
@@ -473,15 +709,17 @@ def format_pe_board(diagnosis: AssayDiagnosis) -> str:
 
     flags = list(diagnosis.qa.flags) if diagnosis.qa else []
     gate = apply_complementary_gate(
-        qa_status=diagnosis.state if diagnosis.state in {"O0", "O1", "O2", "O3", "O4", "OX"} else "OX",
+        qa_status=diagnosis.state if diagnosis.state != "O4" else "O3",
         flags=flags,
-        hypo_reviewed=False,
-        feed_attached=False,
-        oil_installed=False,
+        hypo_reviewed=diagnosis.hypo_reviewed,
+        feed_attached=diagnosis.feed_attached,
+        oil_installed=diagnosis.oil_installed,
     )
-    if diagnosis.handoff_to_cdu and gate.o4_blocked:
-        lines.append("")
-        lines.append("Note: hand-off suppressed by complementary O4 gate.")
+    # After O4 promotion, show gate as allowed
+    if diagnosis.handoff_to_cdu:
+        gate.o4_blocked = False
+        gate.reasons = [r for r in gate.reasons if "O4 blocked" not in r]
+
     lines.append("")
     lines.append(format_identity_block())
     lines.append("")

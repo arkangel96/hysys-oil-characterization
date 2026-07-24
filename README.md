@@ -12,10 +12,14 @@ External desktop assist for **crude assay / Oil Manager** work in Aspen HYSYS
 
 ## What it does (now)
 
-- Connect to a running HYSYS case
-- List material streams + fluid-package components
-- Show an **Assay PE board** (intelligence states — grow in docs + code)
+- Connect to a running HYSYS case (READ-first)
+- Structured Oil Manager inventory + FEED composition (lights / `NBP*`)
+- MRC Basrah/Mishrif pack QA + material-balance yield check
+- Gated COM write stubs (`allow_COM_write=false` — manual Oil Manager first)
+- Export `handoff_o4.json` when O4 gate passes
 - Never auto-saves the HYSYS case
+
+**Edit the repo root only** (`main.py`, `gui.py`, …). Nested `oil_characterization/` is a duplicate.
 
 ## What it will do (intelligence track)
 

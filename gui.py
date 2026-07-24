@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
+    QCheckBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -23,12 +26,16 @@ from assay_engine import (
     diagnose_assay,
     diagnose_case,
     diagnose_mrc_pack,
+    finalize_o4,
     format_pe_board,
     load_assay,
+    merge_diagnosis,
 )
+from complementary_rules import DEFAULTS
+from handoff import write_handoff_o4
 from hysys_api import HysysController, HysysError
 from models import CaseSnapshot
-from pe_identity import PRODUCT_NAME, PRODUCT_VERSION, pe_banner
+from pe_identity import PRODUCT_NAME, PRODUCT_VERSION
 
 
 class OilCharacterizationAssist(QMainWindow):
@@ -37,10 +44,11 @@ class OilCharacterizationAssist(QMainWindow):
         self.setWindowTitle(
             f"{PRODUCT_NAME} v{PRODUCT_VERSION} — Expert Oil Characterization PE"
         )
-        self.resize(1100, 720)
+        self.resize(1180, 780)
         self.hysys = HysysController()
         self.snapshot: CaseSnapshot | None = None
         self._assay_mode = "none"
+        self._last_diagnosis = None
         self._build_ui()
         self._set_status(
             "Default: expert Aspen HYSYS oil-characterization PE — Load MRC Pack or Connect."
@@ -88,6 +96,27 @@ class OilCharacterizationAssist(QMainWindow):
         toolbar.addStretch(1)
         layout.addLayout(toolbar)
 
+        verify_bar = QHBoxLayout()
+        self.chk_hypo = QCheckBox("Hypo / NBP slate reviewed (PE)")
+        self.btn_handoff = QPushButton("Export handoff_o4.json")
+        self.btn_com_write = QPushButton("COM write (gated — OFF)")
+        self.btn_com_write.setEnabled(False)
+        self.btn_com_write.setToolTip(
+            "allow_COM_write=false — characterize manually in Oil Manager; Assist verifies."
+        )
+        verify_bar.addWidget(self.chk_hypo)
+        verify_bar.addWidget(self.btn_handoff)
+        verify_bar.addWidget(self.btn_com_write)
+        verify_bar.addStretch(1)
+        layout.addLayout(verify_bar)
+
+        com_note = QLabel(
+            f"COM write gate: allow_COM_write={DEFAULTS.get('allow_COM_write')} — "
+            "manual Oil Manager first; Assist READ-verifies install/attach/NBP."
+        )
+        com_note.setWordWrap(True)
+        layout.addWidget(com_note)
+
         self.status = QLabel("")
         layout.addWidget(self.status)
 
@@ -102,10 +131,22 @@ class OilCharacterizationAssist(QMainWindow):
             ["Stream", "T", "P", "MolarFlow", "VF"]
         )
         left_layout.addWidget(self.stream_table)
+
+        left_layout.addWidget(QLabel("Oil Manager inventory"))
+        self.om_box = QTextEdit()
+        self.om_box.setReadOnly(True)
+        self.om_box.setMaximumHeight(120)
+        left_layout.addWidget(self.om_box)
+
+        left_layout.addWidget(QLabel("FEED composition (lights / NBP)"))
+        self.feed_table = QTableWidget(0, 3)
+        self.feed_table.setHorizontalHeaderLabels(["Component", "Fraction", "Kind"])
+        left_layout.addWidget(self.feed_table)
+
         left_layout.addWidget(QLabel("Fluid-package components"))
         self.comp_box = QTextEdit()
         self.comp_box.setReadOnly(True)
-        self.comp_box.setMaximumHeight(140)
+        self.comp_box.setMaximumHeight(100)
         left_layout.addWidget(self.comp_box)
         splitter.addWidget(left)
 
@@ -122,7 +163,7 @@ class OilCharacterizationAssist(QMainWindow):
         self.log.setMaximumHeight(160)
         right_layout.addWidget(self.log)
         splitter.addWidget(right)
-        splitter.setSizes([550, 550])
+        splitter.setSizes([560, 560])
 
         self.btn_mrc.clicked.connect(self.on_load_mrc_pack)
         self.btn_basrah.clicked.connect(lambda: self.on_qa_crude("BASRAH"))
@@ -132,8 +173,14 @@ class OilCharacterizationAssist(QMainWindow):
         self.btn_refresh.clicked.connect(self.on_refresh)
         self.btn_solve.clicked.connect(self.on_solve)
         self.btn_disconnect.clicked.connect(self.on_disconnect)
+        self.chk_hypo.stateChanged.connect(lambda _s: self._refresh_pe_board())
+        self.btn_handoff.clicked.connect(self.on_export_handoff)
+        self.btn_com_write.clicked.connect(self.on_com_write_blocked)
 
         self._refresh_pe_board()
+
+    def _hypo_reviewed(self) -> bool:
+        return bool(self.chk_hypo.isChecked())
 
     def _set_status(self, text: str) -> None:
         self.status.setText(text)
@@ -141,19 +188,52 @@ class OilCharacterizationAssist(QMainWindow):
     def _log(self, text: str) -> None:
         self.log.append(text)
 
+    def _current_diagnosis(self):
+        hypo = self._hypo_reviewed()
+        if self._assay_mode in {"mrc", "merged"}:
+            diag = diagnose_mrc_pack(self.snapshot)
+            diag.hypo_reviewed = hypo
+            if self.snapshot is not None:
+                diag.oil_installed = self.snapshot.feed_evidence.oil_installed
+                diag.feed_attached = self.snapshot.feed_evidence.feed_attached
+                diag.feed_stream = self.snapshot.feed_evidence.feed_stream
+                diag.case_title = self.snapshot.case_title
+            return finalize_o4(diag)
+        if self._assay_mode in {"BASRAH", "MISHRIF"}:
+            assay_diag = diagnose_assay(load_assay(self._assay_mode))
+            if self.snapshot is not None:
+                case_diag = diagnose_case(self.snapshot, hypo_reviewed=hypo)
+                return merge_diagnosis(assay_diag, case_diag, hypo_reviewed=hypo)
+            assay_diag.hypo_reviewed = hypo
+            return finalize_o4(assay_diag)
+        case_diag = diagnose_case(self.snapshot, hypo_reviewed=hypo)
+        return finalize_o4(case_diag)
+
     def _refresh_pe_board(self) -> None:
-        if self._assay_mode == "mrc":
-            diagnosis = diagnose_mrc_pack()
-        elif self._assay_mode in {"BASRAH", "MISHRIF"}:
-            diagnosis = diagnose_assay(load_assay(self._assay_mode))
-        else:
-            diagnosis = diagnose_case(self.snapshot)
+        diagnosis = self._current_diagnosis()
+        # Propagate hypo checkbox onto diagnosis for gate
+        diagnosis.hypo_reviewed = self._hypo_reviewed()
+        if self.snapshot is not None and not diagnosis.oil_installed:
+            diagnosis.oil_installed = self.snapshot.feed_evidence.oil_installed
+            diagnosis.feed_attached = self.snapshot.feed_evidence.feed_attached
+            diagnosis.feed_stream = self.snapshot.feed_evidence.feed_stream
+            diagnosis.case_title = self.snapshot.case_title
+        diagnosis = finalize_o4(diagnosis)
+        self._last_diagnosis = diagnosis
         self.pe_board.setPlainText(format_pe_board(diagnosis))
 
     def on_load_mrc_pack(self) -> None:
         try:
-            diagnosis = diagnose_mrc_pack()
-            self._assay_mode = "mrc"
+            self._assay_mode = "merged" if self.snapshot is not None else "mrc"
+            diagnosis = self._current_diagnosis()
+            diagnosis.hypo_reviewed = self._hypo_reviewed()
+            if self.snapshot is not None:
+                diagnosis.oil_installed = self.snapshot.feed_evidence.oil_installed
+                diagnosis.feed_attached = self.snapshot.feed_evidence.feed_attached
+                diagnosis.feed_stream = self.snapshot.feed_evidence.feed_stream
+                diagnosis.case_title = self.snapshot.case_title
+            diagnosis = finalize_o4(diagnosis)
+            self._last_diagnosis = diagnosis
             self.pe_board.setPlainText(format_pe_board(diagnosis))
             self._set_status(f"MRC pack QA — state {diagnosis.state}")
             self._log(f"Loaded MRC pack — state {diagnosis.state}")
@@ -163,10 +243,9 @@ class OilCharacterizationAssist(QMainWindow):
 
     def on_qa_crude(self, crude_id: str) -> None:
         try:
-            assay = load_assay(crude_id)
-            diagnosis = diagnose_assay(assay)
             self._assay_mode = crude_id
-            self.pe_board.setPlainText(format_pe_board(diagnosis))
+            self._refresh_pe_board()
+            diagnosis = self._last_diagnosis
             self._set_status(f"{crude_id} assay QA — state {diagnosis.state}")
             self._log(f"QA {crude_id} — state {diagnosis.state}")
             if diagnosis.qa and diagnosis.qa.flags:
@@ -175,9 +254,52 @@ class OilCharacterizationAssist(QMainWindow):
             QMessageBox.warning(self, "Assay QA failed", str(exc))
             self._log(f"ERROR: {exc}")
 
+    def _fill_om_pane(self, snapshot: CaseSnapshot) -> None:
+        oil = snapshot.oil_manager
+        lines = [
+            f"found={oil.found} path={oil.path or '(none)'}",
+            f"assays ({oil.assay_count}): {', '.join(oil.assay_names) or '(none)'}",
+            f"oils ({len(oil.oil_names)}): {', '.join(oil.oil_names) or '(none)'}",
+            f"blends ({oil.blend_count}):",
+        ]
+        for blend in oil.blends:
+            lines.append(
+                f"  • {blend.name} ready={blend.is_ready_to_install} "
+                f"assays={blend.assay_names}"
+            )
+        if oil.readable_members:
+            lines.append("members: " + ", ".join(oil.readable_members))
+        if oil.notes:
+            lines.append("notes: " + "; ".join(oil.notes[:6]))
+        if oil.error:
+            lines.append("error: " + oil.error)
+        self.om_box.setPlainText("\n".join(lines))
+
+    def _fill_feed_table(self, snapshot: CaseSnapshot) -> None:
+        self.feed_table.setRowCount(0)
+        comp = snapshot.feed_composition
+        if comp is None:
+            return
+        # Prefer showing lights + NBP first
+        ordered = sorted(
+            comp.components,
+            key=lambda c: (0 if c.kind == "light" else 1 if c.kind == "nbp" else 2, c.name),
+        )
+        for item in ordered:
+            if item.kind == "other" and (item.fraction or 0) == 0:
+                continue
+            row = self.feed_table.rowCount()
+            self.feed_table.insertRow(row)
+            frac = "" if item.fraction is None else f"{item.fraction:.6g}"
+            for col, value in enumerate([item.name, frac, item.kind]):
+                self.feed_table.setItem(row, col, QTableWidgetItem(value))
+
     def _apply_snapshot(self, snapshot: CaseSnapshot) -> None:
         self.snapshot = snapshot
-        self._assay_mode = "hysys"
+        if self._assay_mode in {"mrc", "BASRAH", "MISHRIF", "merged"}:
+            self._assay_mode = "merged" if self._assay_mode == "mrc" else self._assay_mode
+        else:
+            self._assay_mode = "hysys"
         self.stream_table.setRowCount(0)
         for stream in snapshot.streams:
             row = self.stream_table.rowCount()
@@ -194,10 +316,14 @@ class OilCharacterizationAssist(QMainWindow):
         self.comp_box.setPlainText(
             ", ".join(snapshot.component_names) if snapshot.component_names else "(none)"
         )
+        self._fill_om_pane(snapshot)
+        self._fill_feed_table(snapshot)
         self._refresh_pe_board()
+        ev = snapshot.feed_evidence
         self._set_status(
             f"Connected — {snapshot.case_title} | "
-            f"{len(snapshot.streams)} streams | {len(snapshot.component_names)} components"
+            f"{len(snapshot.streams)} streams | {len(snapshot.component_names)} comps | "
+            f"FEED={ev.feed_stream} NBP={ev.nbp_count}"
         )
 
     @staticmethod
@@ -213,6 +339,10 @@ class OilCharacterizationAssist(QMainWindow):
             self._apply_snapshot(snap)
             self._log(f"Connected: {snap.case_title}")
             self._log(f"Oil Manager: {snap.oil_manager_hint}")
+            self._log(
+                f"FEED evidence: installed={snap.feed_evidence.oil_installed} "
+                f"attached={snap.feed_evidence.feed_attached}"
+            )
         except HysysError as exc:
             QMessageBox.warning(self, "Connect failed", str(exc))
             self._log(f"ERROR: {exc}")
@@ -242,7 +372,7 @@ class OilCharacterizationAssist(QMainWindow):
         try:
             snap = self.hysys.snapshot()
             self._apply_snapshot(snap)
-            self._log("Refreshed snapshot.")
+            self._log("Refreshed snapshot (Oil Manager + FEED composition).")
         except HysysError as exc:
             QMessageBox.warning(self, "Refresh failed", str(exc))
             self._log(f"ERROR: {exc}")
@@ -264,7 +394,69 @@ class OilCharacterizationAssist(QMainWindow):
         self.snapshot = None
         self._assay_mode = "none"
         self.stream_table.setRowCount(0)
+        self.feed_table.setRowCount(0)
         self.comp_box.clear()
+        self.om_box.clear()
         self._refresh_pe_board()
         self._set_status("Disconnected.")
         self._log("Disconnected.")
+
+    def on_com_write_blocked(self) -> None:
+        QMessageBox.information(
+            self,
+            "COM write gated",
+            "allow_COM_write=false.\n\n"
+            "Characterize / Install / Attach manually in Oil Manager.\n"
+            "Use Refresh so Assist can verify FEED lights + NBP.\n"
+            "Write stubs exist in hysys_api but will not fire until inventory flips the gate.",
+        )
+        self._log("COM write blocked by allow_COM_write=false.")
+
+    def on_export_handoff(self) -> None:
+        self._refresh_pe_board()
+        diagnosis = self._last_diagnosis
+        if diagnosis is None:
+            QMessageBox.information(self, "Handoff", "No diagnosis yet.")
+            return
+        diagnosis.hypo_reviewed = self._hypo_reviewed()
+        if self.snapshot is not None:
+            diagnosis.oil_installed = (
+                diagnosis.oil_installed or self.snapshot.feed_evidence.oil_installed
+            )
+            diagnosis.feed_attached = (
+                diagnosis.feed_attached or self.snapshot.feed_evidence.feed_attached
+            )
+            diagnosis.feed_stream = diagnosis.feed_stream or self.snapshot.feed_evidence.feed_stream
+            diagnosis.case_title = diagnosis.case_title or self.snapshot.case_title
+        diagnosis = finalize_o4(diagnosis)
+        if not diagnosis.handoff_to_cdu:
+            QMessageBox.warning(
+                self,
+                "Handoff blocked",
+                "O4 gate not passed.\n"
+                "Need assay O2/O3 (not OX), oil_installed, feed_attached, and hypo reviewed.\n"
+                f"Current state={diagnosis.state} "
+                f"install={diagnosis.oil_installed} attach={diagnosis.feed_attached} "
+                f"hypo={diagnosis.hypo_reviewed}",
+            )
+            self._log("Handoff export blocked by O4 gate.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export handoff_o4.json",
+            str(Path.cwd() / "handoff_o4.json"),
+            "JSON (*.json)",
+        )
+        if not path:
+            return
+        try:
+            out = write_handoff_o4(diagnosis, path, notes="Exported from Oil Characterization Assist")
+            self._log(f"Wrote handoff token: {out}")
+            QMessageBox.information(
+                self,
+                "Handoff written",
+                f"Wrote {out}\n\nOpen CDU Assist on the same HYSYS case. No auto-launch.",
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Handoff failed", str(exc))
+            self._log(f"ERROR: {exc}")

@@ -7,3 +7,9 @@ __pycache__/
 *.bk0
 .DS_Store
 Thumbs.db
+
+# Aspen CHM originals / extracts — local reference only (do not commit)
+from aspen doc/
+
+# Nested duplicate tree — root is the editable app
+oil_characterization/

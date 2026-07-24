@@ -1,11 +1,11 @@
 """Aspen-sourced intelligence for HYSYS oil characterization (coded).
 
 Pertinent knowledge curated from Aspen help CHMs in `from aspen doc/`:
-- xhysys.chm — HYSYS Oil Manager / Assay COM enumerations & OilManager members
+- xhysys.chm — HYSYS Oil Manager / Assay / Blend / ProcessStream COM
 - AspenFeedStockAssayManager.chm — conventional characterization methodology
 
 Does NOT copy Aspen copyrighted help verbatim into the product UI.
-Does NOT enable silent COM writes. Enums support future gated automation.
+Does NOT enable silent COM writes. Enums + map support gated automation.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Any
 
 
 SOURCE_NOTE = (
-    "Curated from Aspen HYSYS Customization (xhysys) Oil Manager / Assay enums "
+    "Curated from Aspen HYSYS Customization (xhysys) Oil Manager / Assay / Blend "
     "and Aspen Feedstock Assay Management characterize overview. "
     "Not an AspenTech product; verify against your HYSYS build."
 )
@@ -68,7 +68,7 @@ ASSAY_LIGHT_ENDS_COMPOSITION_BASIS = {
 }
 
 
-# OilManager members pertinent to FEED characterization (xhysys OilManager topic)
+# OilManager members (xhysys OilManager topic)
 OIL_MANAGER_MEMBERS = (
     "Blends",
     "CorrelationSets",
@@ -82,12 +82,140 @@ OIL_MANAGER_MEMBERS = (
     "SetAssociatedFluidPackage",
 )
 
+# Blend members pertinent to FEED install (xhysys blend_object)
+BLEND_READ_MEMBERS = (
+    "Assays",
+    "IsReadyToInstall",
+    "CutOptionType",
+    "ComponentName",
+    "ComponentNBP",
+    "ComponentNBPValue",
+    "NumberOfCuts",
+    "NumberOfCutsValue",
+)
+
+BLEND_WRITE_METHODS = (
+    "AddAssay",
+    "RemoveAssay",
+    "InstallIntoStream",
+)
+
+# ProcessStream composition reads (xhysys ProcessStream)
+STREAM_COMPOSITION_PROPS = (
+    "ComponentMassFractionValue",
+    "ComponentMoleFractionValue",
+    "ComponentName",
+)
+
 # Probe paths to try when discovering Oil Manager on a live case
 OIL_MANAGER_PROBE_PATHS = (
     ("BasisManager", "OilManager"),
     ("OilManager",),
     ("BasisManager", "Oils"),
     ("BasisManager", "Assays"),
+)
+
+# Names that look like library lights (case-insensitive contains / exact-ish)
+LIBRARY_LIGHT_TOKENS = (
+    "methane",
+    "ethane",
+    "propane",
+    "i-butane",
+    "ibutane",
+    "n-butane",
+    "nbutane",
+    "i-pentane",
+    "ipentane",
+    "n-pentane",
+    "npentane",
+    "h2o",
+    "water",
+    "nitrogen",
+    "co2",
+    "h2s",
+    "hydrogen",
+)
+
+# Hypo / NBP name patterns
+NBP_NAME_PREFIXES = ("NBP", "Hypo", "HC_")
+
+
+# HYSYS Properties ribbon — which tool for crude FEED characterization (V14 UI + manuals)
+# Screenshot Home: Refining | Oil | Hypotheticals
+CHARACTERIZATION_TOOL_CHOICE = {
+    "primary": "Oil Manager",
+    "ribbon_group": "Oil",
+    "why": (
+        "xhysys COM documents OilManager / Assays / Blend.InstallIntoStream — "
+        "this produces library lights + NBP[0]* on FEED/Raw Crude Worksheet "
+        "(target composition contract)."
+    ),
+    "not_petroleum_assays": (
+        "Petroleum Assays (Refining) is Aspen Assay Management / refining assay UI. "
+        "Useful later for assay library work; not the COM path we use for CDU FEED "
+        "install of Oil Manager hypocomponents."
+    ),
+    "not_hypotheticals_manager": (
+        "Hypotheticals Manager edits hypo components manually. "
+        "Hypos are the OUTPUT of Oil Manager characterize — do not enter TBP/LE there."
+    ),
+    "com_objects": (
+        "BasisManager.OilManager",
+        "OilManager.Assays",
+        "OilManager.Blends",
+        "Blend.InstallIntoStream",
+    ),
+}
+
+
+def format_tool_choice_block() -> str:
+    c = CHARACTERIZATION_TOOL_CHOICE
+    return "\n".join(
+        [
+            "--- HYSYS tool choice (manual + V14 UI) ---",
+            f"Use: {c['primary']} (ribbon: {c['ribbon_group']})",
+            f"Why: {c['why']}",
+            f"Not Petroleum Assays: {c['not_petroleum_assays']}",
+            f"Not Hypotheticals Manager: {c['not_hypotheticals_manager']}",
+            "COM: " + ", ".join(c["com_objects"]),
+        ]
+    )
+
+
+# Fluid Package Set Up — V14 UI contract (screenshot + live COM/UIA 2026-07-25)
+FLUID_PACKAGE_UI_V14 = {
+    "package_type": "HYSYS",
+    "component_list_selection_suffix": "[HYSYS Databanks]",
+    "property_package_selection": "Peng-Robinson",
+    "property_package_none": "<none>",
+    "status_need_pp": "Select property package",
+    "com_setter_works": False,  # PropertyPackageName Let rejected on V14
+    "uia_click_works": True,  # click list text then COM-read succeeds
+}
+
+# Capability map: read vs gated write (OC-ASPEN-03)
+COM_CAPABILITY_MAP: tuple[dict[str, str], ...] = (
+    {"capability": "connect_open_streams_solve", "access": "read", "status": "coded"},
+    {"capability": "oil_manager_inventory", "access": "read", "status": "coded"},
+    {"capability": "assays_collection_names", "access": "read", "status": "coded"},
+    {"capability": "blend_is_ready_to_install", "access": "read", "status": "coded"},
+    {"capability": "stream_composition_mass_mole", "access": "read", "status": "coded"},
+    {"capability": "classify_lights_vs_nbp", "access": "read", "status": "coded"},
+    {"capability": "verify_install_attach", "access": "read", "status": "coded"},
+    {"capability": "component_list_add_lights", "access": "write", "status": "proven_live"},
+    {"capability": "fluid_package_add_attach_list", "access": "write", "status": "proven_live"},
+    {
+        "capability": "select_peng_robinson",
+        "access": "write",
+        "status": "proven_uia",  # COM Let fails; UI click works
+    },
+    {"capability": "assays_add_tbp", "access": "write", "status": "proven_live"},
+    {"capability": "assays_collection_add", "access": "write", "status": "gated_stub"},
+    {"capability": "blend_add_assay", "access": "write", "status": "gated_stub"},
+    {"capability": "blend_install_into_stream", "access": "write", "status": "gated_stub"},
+    {"capability": "set_associated_fluid_package", "access": "write", "status": "proven_live"},
+    {"capability": "assay_tbp_le_bulk_setters", "access": "write", "status": "gated_stub"},
+    {"capability": "auto_save_hsc", "access": "write", "status": "forbidden"},
 )
 
 
@@ -100,6 +228,8 @@ CHARACTERIZATION_RULES = (
     "Components lighter than n-Pentane belong in whole crude and light-end cut — not all naphtha cuts.",
     "Blend assays are made from already-characterized assays (no Input Assay on the blend).",
     "HYSYS exposes assay extrapolation methods — our PE gate forbids silent TBP extrapolation.",
+    "Blend.InstallIntoStream(StreamName) installs calculated oil into a named material stream.",
+    "Blend.IsReadyToInstall must be true before install (read-verify path).",
 )
 
 
@@ -118,6 +248,23 @@ class AspenEntryPlan:
     allow_extrapolation: bool
     notes: list[str] = field(default_factory=list)
     oil_manager_members: tuple[str, ...] = OIL_MANAGER_MEMBERS
+
+
+def classify_component_name(name: str) -> str:
+    """Return 'light', 'nbp', or 'other' for a fluid-package / stream component name."""
+    lower = (name or "").strip().lower()
+    if not lower:
+        return "other"
+    for token in LIBRARY_LIGHT_TOKENS:
+        if token in lower.replace(" ", ""):
+            return "light"
+    upper = (name or "").strip().upper()
+    for prefix in NBP_NAME_PREFIXES:
+        if upper.startswith(prefix.upper()):
+            return "nbp"
+    if "NBP[" in upper or "NBP*" in upper:
+        return "nbp"
+    return "other"
 
 
 def recommend_hysys_entry(assay: dict[str, Any]) -> AspenEntryPlan:
@@ -145,7 +292,6 @@ def recommend_hysys_entry(assay: dict[str, Any]) -> AspenEntryPlan:
         type_name = "at_BulkPropertiesOnly"
         notes.append("No distillation — bulk-only is weak for CDU FEED; obtain TBP.")
 
-    # Our MRC pack uses cumulative wt% TBP and LE as wt% of cut → mass basis
     basis_name = "ab_MassFraction"
     notes.append("Assay basis ab_MassFraction — matches proposal wt% TBP / LE.")
 
@@ -167,11 +313,13 @@ def recommend_hysys_entry(assay: dict[str, Any]) -> AspenEntryPlan:
     le_comp_basis = "alecb_MassFraction"
     notes.append("LE composition basis alecb_MassFraction (wt%).")
 
-    # Binding PE: never silent extrapolation even though Aspen offers methods
     allow_extrap = False
     notes.append(
         "Extrapolation methods exist (LeastSquares/LaGrange/Probability) — "
         "do NOT apply silently to fake TBP coverage (our OX gate)."
+    )
+    notes.append(
+        "After characterize: confirm Blend.IsReadyToInstall, then InstallIntoStream(FEED)."
     )
 
     return AspenEntryPlan(
@@ -188,6 +336,25 @@ def recommend_hysys_entry(assay: dict[str, Any]) -> AspenEntryPlan:
     )
 
 
+def format_com_capability_block() -> str:
+    lines = ["COM capability map (Aspen-curated):"]
+    for row in COM_CAPABILITY_MAP:
+        lines.append(
+            f"  • {row['capability']}: {row['access']} — {row['status']}"
+        )
+    lines.append("")
+    lines.append("Fluid Package Set Up (V14 UI):")
+    lines.append(f"  Package Type: {FLUID_PACKAGE_UI_V14['package_type']}")
+    lines.append(
+        f"  Property Package Selection: {FLUID_PACKAGE_UI_V14['property_package_selection']}"
+    )
+    lines.append(
+        f"  COM setter works: {FLUID_PACKAGE_UI_V14['com_setter_works']} | "
+        f"UIA click works: {FLUID_PACKAGE_UI_V14['uia_click_works']}"
+    )
+    return "\n".join(lines)
+
+
 def format_aspen_block(assay: dict[str, Any] | None = None) -> str:
     """PE-board block: Aspen methodology + optional entry plan."""
     lines = [
@@ -202,6 +369,17 @@ def format_aspen_block(assay: dict[str, Any] | None = None) -> str:
     lines.append("")
     lines.append("OilManager COM members (discover/read):")
     lines.append("  " + ", ".join(OIL_MANAGER_MEMBERS))
+    lines.append("")
+    lines.append("Blend members (read/verify):")
+    lines.append("  " + ", ".join(BLEND_READ_MEMBERS))
+    lines.append("")
+    lines.append(format_com_capability_block())
+    lines.append("")
+    lines.append(format_tool_choice_block())
+    lines.append("")
+    from oil_manager_ui import format_oil_manager_ui_block
+
+    lines.append(format_oil_manager_ui_block())
 
     if assay is None:
         lines.append("")

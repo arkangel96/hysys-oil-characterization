@@ -1,0 +1,18 @@
+---
+description: Workspace has two separate HYSYS assist products — do not merge
+alwaysApply: true
+---
+
+# Two products in this workspace
+
+| Folder | Product | Do |
+|--------|---------|-----|
+| `oil_charateization/` | CDU Assist | Tower / column only |
+| `oil_characterization/` | Oil Characterization Assist | Assay → characterize → FEED composition |
+
+Both agents should think as **expert Aspen HYSYS CDU + Oil Manager PEs** (same as the user).  
+Product *code* stays split; PE *judgment* is shared language.
+
+- Never merge Oil Characterization into CDU Assist UI or `column_engine`
+- Never import across the two trees
+- Oil Char deliverable = credible FEED (lights + hypos); CDU deliverable = converged tower vs FINAL_TARGETs
