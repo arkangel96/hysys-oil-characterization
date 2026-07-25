@@ -1,10 +1,12 @@
 # MRC CDU 70,000 BPSD — Feed & product data (proposal extract)
 
+**Givens-first checklist:** [`MRC_GIVENS.md`](MRC_GIVENS.md) (screenshots 2026-07-25)
+
 **Source document:** ICDL 001 C 11 T 001 H — TECHNICAL PROPOSAL  
 **Client:** MRC  
 **Project / unit:** CDU 70000 BPSD + LPG UNIT  
 **Section:** 2.4 Feed and Products Specification (Rev. B)  
-**Captured:** 2026-07-24 (from user-pasted pages)  
+**Captured:** 2026-07-24 (from user-pasted pages); process flow §2.2 added via givens 2026-07-25  
 **Status:** Proposal extract — prefer full INTERTEK reports when available for master assay
 
 ---

@@ -22,15 +22,17 @@ Console learning (BasrahTBP3)
 - "Assay could not be calculated. The boiling point temperature table is not ready."
 ⇒ Calculate All needs: bulk density/SG (or API) + TBP boiling T table + yields.
 
-Workflow (manual / future COM)
+Workflow (manual / live COM)
 ------------------------------
 1. Keep CompList1 + Basis-1 Peng-Robinson (delete empty Component List - 1)
 2. Oil Manager → Input Assay → one TBP assay (Assays.Add(name, \"TBP\"))
-3. Enter bulk SG/API, user-input LE (cut basis), TBP mass curve
-4. Calculate All (assay.Calculate / UI Calculate All)
-5. Output Blend → add assay → Ready
-6. Install Oil → Stream Name Raw Crude (Blend.InstallIntoStream)
-7. Verify Worksheet Composition: lights + NBP[0]*
+3. Open assay form (double-click row) — required before COM writers
+4. Enter bulk SG/API, user-input LE (cut basis), TBP mass curve
+   (live: enter_tbp_assay_seed_live — converts T °C→°F for Input Data [F])
+5. Calculate All (assay.Calculate / UI Calculate)
+6. Output Blend → add assay → Ready
+7. Install Oil → Stream Name Raw Crude (Blend.InstallIntoStream)
+8. Verify Worksheet Composition: lights + NBP[0]*
 """
 
 from __future__ import annotations
@@ -105,6 +107,9 @@ BASRAH_OIL_MANAGER_SEED: dict[str, Any] = {
         "TBP coverage soft at 500 C (~72%) — no silent extrapolation (OX).",
         "D86 empty — do not invent.",
         "Console requires bulk SG + boiling point temperature table before Calculate.",
+        "COM writers need assay form open (double-click Input Assay row).",
+        "BoilingTemperatureValue uses COM °C (UI [F] is display). Do not pre-convert seed to °F.",
+        "Bulk Properties must be Used + SG — Not Used → bulk SG warning / Watson K skip.",
     ),
 }
 
@@ -118,6 +123,28 @@ OIL_MANAGER_WORKFLOW = (
     "Install Oil → Stream Name = Raw Crude (Simulation stream)",
     "Verify Worksheet Composition: C1–C5/H2O lights + NBP[0]* hypos",
 )
+
+# Output Blend list UI (V14) — screenshot 2026-07-25
+OUTPUT_BLEND_UI_V14 = {
+    "tree": ("Oil Manager", "Output Blend"),
+    "table_columns": ("Blend", "Correlation Set", "Status"),
+    "buttons": ("Add", "Copy", "Delete", "Oil Manager", "Input Assay"),
+    "status_installed_pattern": "Installed - in <{stream}> on <{fluid_package}>",
+    "example_row": {
+        "blend": "BasrahBlend",
+        "correlation_set": "Default Set",
+        "status": "Installed - in <Raw Crude> on <Basis-1>",
+    },
+    "com_add": "OilManager.Blends.Add(blendName)",
+    "com_add_assay": "Blend.AddAssay(assayName)",
+    "com_install": "Blend.InstallIntoStream(streamName)",
+    # Live note: Status string can show Installed while FP still has only library
+    # lights (no NBP*) — verify CompList / Worksheet Composition, not Status alone.
+    "verify_after_install": (
+        "FluidPackage.Components includes NBP*",
+        "Raw Crude Worksheet Composition: lights + NBP[0]* mole/mass fractions",
+    ),
+}
 
 # Input Assay table UI (V14) — Add / Copy / Delete / Oil Manager / Output Blend
 INPUT_ASSAY_UI_V14 = {
@@ -133,9 +160,73 @@ INPUT_ASSAY_UI_V14 = {
         "Export",
         "Oil Input Preferences...",
     ),
+    "grid_class": "OdfDataGrid",
+    "assay_cell_class": "DataGridCell",
+    "open_assay": "double-click Assay DataGridCell (one shot — no loops)",
+    "warning_icon": "yellow caution on Input Assay tree = incomplete / not calculated",
     "com_delete": "OilManager.Assays.Remove(assayName)",  # proven live V14
     "com_add_tbp": "OilManager.Assays.Add(assayName, 'TBP')",  # AssayType=0
 }
+
+# Basrah assay form (V14 live 2026-07-25) — after double-click row
+ASSAY_FORM_UI_V14 = {
+    "tabs": (
+        "Input Data",
+        "Calculation Defaults",
+        "Working Curves",
+        "Plots",
+        "User Curves",
+        "Notes",
+    ),
+    "assay_definition_labels": (
+        "Assay Data Type",
+        "Bulk Properties",
+        "Light Ends",
+        "Molecular Wt. Curve",
+        "Density Curve",
+        "Viscosity Curves",
+        "TBP Distillation Conditions",
+    ),
+    "input_data": {
+        "assay_basis": "Assay Basis",  # UI: Mass
+        "distillation_radio": "Distillation",
+        "grid_columns": ("Assay Percent", "Temperature"),
+        "temperature_unit_seen": "[F]",  # display only
+        "min_points_msg": "At least 5 points are required",
+        "table_ready": "Table is Ready",
+        "add_points": ("Num of Points to Add", "Add Data Points"),
+    },
+    # Live Assay Definition values (Basrah screenshot 2026-07-25)
+    "assay_definition_defaults": {
+        "Bulk Properties": "Used",  # screenshot had Not Used — causes bulk SG warning
+        "Assay Data Type": "TBP",
+        "Light Ends": "Input Composition",
+        "Molecular Wt. Curve": "Not Used",
+        "Density Curve": "Not Used",
+        "Viscosity Curves": "Not Used",
+        "TBP Distillation Conditions": "Atmospheric",
+        "Assay Basis": "Mass",
+    },
+    "buttons": (
+        "Handling & Fitting",
+        "Edit Assay...",
+        "Calculate",
+        "Input Assay",
+        "Output Blend",
+    ),
+    "status_calculated": "Assay Was Calculated",
+    "status_not_calculated": "Assay Was Not Calculated",
+    # Proven: COM *Value writers Access Denied until this form is open;
+    # with form open, BulkMassDensity / LE / TBP / Calculate work.
+    "com_write_requires_form_open": True,
+    # COM BoilingTemperatureValue is °C (SI). UI [F] converts for display.
+    # Writing °F numbers made UI show ~2x wrong (104 written → 219.2 F shown).
+    "com_boiling_t_unit": "C",
+}
+
+
+def celsius_to_fahrenheit(temps_c: list[float] | tuple[float, ...]) -> list[float]:
+    return [float(t) * 9.0 / 5.0 + 32.0 for t in temps_c]
 
 
 
@@ -158,8 +249,20 @@ def format_oil_manager_ui_block() -> str:
     lines.append("Console blockers seen on BasrahTBP3:")
     lines.append(f"  • {ui['messages']['need_bulk_sg']}")
     lines.append(f"  • {ui['messages']['tbp_table_not_ready']}")
-        lines.append("")
-        lines.append("Input Assay Delete (COM proven):")
-        lines.append(f"  {INPUT_ASSAY_UI_V14['com_delete']}")
-        lines.append(f"  Add TBP: {INPUT_ASSAY_UI_V14['com_add_tbp']}")
-        return "\n".join(lines)
+    lines.append("")
+    lines.append("Input Assay Delete (COM proven):")
+    lines.append(f"  {INPUT_ASSAY_UI_V14['com_delete']}")
+    lines.append(f"  Add TBP: {INPUT_ASSAY_UI_V14['com_add_tbp']}")
+    lines.append("")
+    form = ASSAY_FORM_UI_V14
+    lines.append("Assay form (double-click row):")
+    lines.append("  Tabs: " + " | ".join(form["tabs"]))
+    lines.append(
+        f"  COM write requires form open: {form['com_write_requires_form_open']}"
+    )
+    lines.append(
+        f"  Boiling T COM unit: {form['com_boiling_t_unit']} "
+        f"(UI {form['input_data']['temperature_unit_seen']})"
+    )
+    lines.append("  Live path: open_input_assay_ui → enter_tbp_assay_seed_live")
+    return "\n".join(lines)

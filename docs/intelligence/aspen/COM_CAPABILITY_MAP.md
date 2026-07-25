@@ -22,12 +22,81 @@
 | Ribbon control | Use for Basrah/Mishrif → Raw Crude FEED? |
 |----------------|------------------------------------------|
 | **Oil Manager** (Oil group) | **YES — primary.** `BasisManager.OilManager` → Assays → Blend → `InstallIntoStream`. Matches target lights + `NBP[0]*`. |
-| **Petroleum Assays** (Refining) | **No (this job).** Aspen Assay Management / refining assay form (`Assays Summary/Petroleum Assays` in Assay Manager help). Different surface; COM `PetroleumAssays` empty on blank case. |
+| **Petroleum Assays** (Refining) | **No (this job).** Assays Summary + Add Assays library. Coded UI map: [`petroleum_assays_ui.py`](../../../petroleum_assays_ui.py). |
 | **Hypotheticals Manager** | **No.** Manual hypo editor. Hypos are **output** of Oil Manager characterize, not where you enter TBP/LE. |
 
 Message bar `Assay Was Not Calculated` confirms Oil Manager assays exist but are not yet calculated — stay on Oil Manager.
 
-Orphan UI note: empty `Component List - 1` causes red Required Info — keep only `CompList1` with the 8 lights. Delete the empty list in the Component Lists table when convenient.
+Orphan UI note: empty `Component List - 1` causes red Required Info — keep only `CompList1` with the 8 lights. COM `ComponentLists.Remove('Component List - 1')` **works** once Basis-1 is attached to CompList1 (proven on sample.hsc continuation).
+
+## Petroleum Assays / Assays Summary (V14 learned 2026-07-25)
+
+**Screen:** Properties → Petroleum Assays → Assays Summary (empty until Add)
+
+| UI | Meaning |
+|----|---------|
+| Display | e.g. All Region |
+| Default Fluid Package | dropdown (empty until set) |
+| Table columns | Assay \| Characterization Method \| Status \| Fluid Package \| From Source \| Density lb/ft3 \| Sulfur % \| Viscosity @100 F cSt \| Watson K \| Add Property/Description |
+| Buttons | Add (dropdown) \| Export \| Copy \| Delete |
+| Add → library | Opens **Add Assays** (Aspen Assay Library) — e.g. Basrah Light-2014 |
+
+**Add workflow (proven live 2026-07-26):**
+1. Assays Summary → Add  
+2. **Assay Component Selection** (gate if no assay-compatible list)  
+3. OK on a common list (e.g. **Assay Components Celsius to 1150C**) → Aspen installs that preset slate into the case  
+4. **Add Assays** library picker opens (this is expected — not an error)  
+5. Select commercial assay row → OK (gray until a row is selected)
+
+**Why 1150C made Add Assays appear:** Component Selection is a *prerequisite gate*, not the assay. OK installs Aspen's whole-crude °C/1150 NBP component slate. Once that exists, Petroleum Assays proceeds to the library picker. 1150C is **not** Basrah/Mishrif data — only the hypo/temperature grid for Assay Management.
+
+**LIVE FAIL 2026-07-26:** 1150C on Basis-2 → Oil Manager LE COM empty → blend not Ready. Gate: `preflight_oil_manager_fp` / `02b_Oil_Manager_FP_Failure.md`. Do **not** use that FP for MRC Oil Manager.
+
+**Add → `Assay Component Selection` (live 2026-07-25):** “There is no assay compatible component list added in this case…”  
+**Dropdown options (captured live — not in any supplied CHM):**
+
+| Preset | Role |
+|--------|------|
+| Assay Components Celsius to 850C | Whole-crude slate °C, lower NBP ceiling |
+| **Assay Components Celsius to 1150C** | Whole-crude Assay Mgmt slate — **banned for MRC Oil Manager FEED** (LE COM fails) |
+| Assay Components Fahrenheit to 1500F | °F mirror of ~850 °C band |
+| Assay Components Fahrenheit to 2000F | °F mirror of ~1150 °C band |
+| FCC Components Celsius / Fahrenheit | Unit-specific — not whole-crude CDU |
+| Hydrocracker Components Celsius / Fahrenheit | Unit-specific |
+| Reformer Components Celsius / Fahrenheit | Unit-specific |
+
+**Add Assays → Select Assay table (live dump 2026-07-26):**
+
+Columns: Assay \| Library Name \| Assay Date \| Region \| Country \| Density lb/ft3 \| Sulfur % \| KinematicViscosity @ 100 F cSt \| TAN(mg KOH/g) mg KOH/g \| Pour Point F \| Blank
+
+**Basrah / Saturno / Azeri / … in Aspen Assay Library** — **full dump coded** (~950 assays) in [`config/aspen_assay_library_select_assay_v14.tsv`](../../../config/aspen_assay_library_select_assay_v14.tsv); search via [`aspen_assay_library_catalog.py`](../../../aspen_assay_library_catalog.py) (`find_library_assays`).  
+**Mishrif:** not present under that name. **MRC:** Cancel — commercial library ≠ Intertek.
+
+Message bar: `Required Info : Components -- Empty component list` + `Updated fluid package xml data is invalid.`  
+`CompList1` (8 lights) is **not** assay-compatible. **MRC action: Cancel** both Component Selection *and* Add Assays (Oil Manager). Library commercial assays ≠ Intertek masters.
+
+**Coded:** [`petroleum_assays_ui.py`](../../../petroleum_assays_ui.py) — UI map + MRC bulk→display mapping (reference only).  
+**CDU FEED:** stay on Oil Manager — do not fill Assays Summary for MRC Basrah/Mishrif.
+
+---
+
+## Doc-source audit (2026-07-25) — what `from aspen doc/` really contains
+
+| CHM | HYSYS doc? | Covers |
+|-----|-----------|--------|
+| `AspenFeedStockAssayManager.chm` | **Yes** | Assay Management / Petroleum Assays (PIMS) methodology |
+| `xhysys.chm` | **Yes** | HYSYS Customization COM: OilManager, Assay, Blend, ProcessStream |
+| `ww10_000.chm` | No | WinWrap Basic **language** reference (Abs, Dim, DlgText…) |
+| `ww10_com.chm` | No | WinWrap Basic COM host reference |
+| `ww10_cxx.chm` | No | WinWrap Basic C++/ATL/MFC integration tutorials |
+
+The three `ww10_*` files are the macro-engine manuals bundled with HYSYS — **zero** HYSYS UI content.
+
+**Coverage gap:** no HYSYS *user guide* CHM was supplied. HYSYS product dialogs are undocumented in our sources.
+
+**Verified absent** (1665 extracted files scanned; control phrase `Characterization Error` confirmed the scan was live): `Assay Component Selection`, `assay compatible`, `common assay component`, `compatible component list`, `Empty component list`. Coded as `DOC_SEARCH_MISSES` in [`aspen_intelligence.py`](../../../aspen_intelligence.py) — do not re-run blind.
+
+---
 
 ## Oil Manager UI (V14 learned 2026-07-25)
 
@@ -49,12 +118,20 @@ Orphan UI note: empty `Component List - 1` causes red Required Info — keep onl
 2. “boiling point temperature table is not ready” → TBP T + yield not entered
 3. Orphan `Component List - 1` (empty) → delete; keep CompList1
 
-**COM write candidates (xhysys Assay*):**  
-`AssayPercentForBoilingTemperatureValue` + `BoilingTemperatureValue`,  
-`BulkMassDensityValue` / API, `LightEndsPercentInAssayValue`,  
-`LightEndsCompositionValue` (8 slots = FP lights), `Calculate()`.
+**Input Assay form (Basrah live 2026-07-25):**  
+Tabs: Input Data | Calculation Defaults | Working Curves | Plots | User Curves | Notes  
+Left: Assay Data Type / Bulk Properties / Light Ends / MW / Density / Viscosity curves  
+Input Data: Assay Basis + Assay Percent / Temperature **[F]** grid (≥5 pts)  
+Buttons: Edit Assay… | Calculate | Output Blend  
 
-**Coded:** [`oil_manager_ui.py`](../../../oil_manager_ui.py) — UI map + Basrah seed + workflow.
+**COM write gate (critical):** `*Value` setters are **Access Denied** until the assay form is open (double-click row). With form open: bulk ρ, LE user-input + composition, TBP arrays, `Calculate()` all work.  
+
+**AspenFeedStockAssayManager vs Oil Manager:** Assay Manager CHM = Petroleum Assays / PIMS characterize (micro-cuts, Property Match). Oil Manager COM writers are in **xhysys**. CDU FEED automation uses Oil Manager only; Aspen Assay Library “Add Assays” is not the MRC Basrah path.
+
+**Coded fill:** [`oil_characterize_fill.py`](../../../oil_characterize_fill.py) + `characterize_fill_live` — StartOilChange → BulkPropertiesUsed + TBP °C + LE → Calculate → Blend → InstallIntoStream → EndOilChange → verify NBP*.
+
+**Coded:** [`oil_manager_ui.py`](../../../oil_manager_ui.py) — UI map + Basrah seed + workflow.  
+**Coded:** [`hysys_ui_automation.open_input_assay_row_ui`](../../../hysys_ui_automation.py) + [`HysysController.enter_tbp_assay_seed_live`](../../../hysys_api.py).
 
 ## Fluid Package Set Up (V14 UI learned 2026-07-25)
 
@@ -78,13 +155,15 @@ Live screen `Fluid Package: Basis-1` → **Set Up**:
 | ComponentLists.Add + Components.Add | COM | **PROVEN live** |
 | FluidPackages.Add + ComponentList= | COM | **PROVEN live** |
 | Select Peng-Robinson | UI click (COM setter broken V14) | **PROVEN live** |
-| Assays.Add(name, "TBP") | COM | **PROVEN live** (type=0) |
-| AssaysCollection.Add | `Function Add(Item) As Variant` | **GATED stub** |
-| Blend.AddAssay | `Sub AddAssay(AssayName)` | **GATED stub** |
-| Blend.InstallIntoStream | `Sub InstallIntoStream(StreamName)` | **GATED stub** |
-| OilManager.SetAssociatedFluidPackage | `Sub SetAssociatedFluidPackage(name)` | **PROVEN live** |
-| Assay TBP / LE / bulk setters | Assay* object properties | Access denied until PP selected — **retry next** |
-| Characterize / Calculate blend | UI-first; COM method varies by build | **Manual first** |
+| `BasisManager.StartOilChange` / `EndOilChange` | COM | **DOCUMENTED** xhysys — oil-edit transaction; coded in `characterize_fill_live` |
+| Assays.Add(name, "TBP") | COM | **PROVEN live** (type=0) — Basrah created on sample.hsc |
+| Open Input Assay row | UIA one double-click on `DataGridCell` | **PROVEN live** — unlocks COM writers |
+| `BulkPropertiesUsed=True` + `BulkMassDensityValue` | COM | **DOCUMENTED** xhysys; live must set Used (screenshot Not Used → SG warning) |
+| Assay TBP / LE setters | `*Value` arrays, LE calc=-1 | **PROVEN** when form open; temps in **°C** |
+| `assay.Calculate()` | COM | **PROVEN** (parameterless; docs' Calculate(val) is RealVariable API) |
+| Blend.Add / AddAssay / IsReadyToInstall | COM | **PROVEN live** |
+| Blend.InstallIntoStream | COM | **PROVEN call**; must create stream first; **verify NBP*** (Status can show Installed with 0 hypos) |
+| Aspen Assay Library Add Assays | UI (Petroleum Assays) | **Out of scope** for MRC Oil Manager Basrah FEED |
 
 ## PE gates (intentional)
 

@@ -647,6 +647,18 @@ class HysysController:
             f"components={result.component_count}"
         )
 
+    def open_input_assay_ui(self, assay_name: str) -> str:
+        """Double-click Input Assay row so COM writers unlock (V14)."""
+        self._require_connection()
+        from hysys_ui_automation import open_input_assay_row_ui
+
+        result = open_input_assay_row_ui(assay_name)
+        if not result.ok:
+            raise HysysError(
+                f"Could not open Input Assay {assay_name!r}: {result.detail}"
+            )
+        return f"Opened {assay_name!r} via {result.method}; {result.detail}"
+
     def com_set_assay_bulk_stub(
         self,
         assay_name: str,
@@ -677,62 +689,103 @@ class HysysController:
                     continue
 
     def com_enter_tbp_assay_seed(self, assay_name: str, seed: dict | None = None) -> str:
-        """Enter bulk / LE / TBP from oil_manager_ui seed (gated). Returns status text."""
+        """Enter bulk / LE / TBP from oil_manager_ui seed (gated). Returns status text.
+
+        Preconditions (V14 live): assay form open (Input Data visible), else Access Denied.
+        Boiling temperatures: seed °C written as °C (UI [F] is display-only).
+        """
         self._require_com_write()
-        from oil_manager_ui import ASSAY_TBP_WRITE_CANDIDATES, BASRAH_OIL_MANAGER_SEED
+        return self._enter_tbp_assay_seed_unlocked(assay_name, seed)
+
+    def enter_tbp_assay_seed_live(
+        self,
+        assay_name: str,
+        seed: dict | None = None,
+        *,
+        open_form: bool = True,
+        calculate: bool = True,
+    ) -> str:
+        """Engineer-authorized live enter — opens form then COM seed (bypasses gate).
+
+        Proven sample.hsc 2026-07-25: form open unlocks BulkMassDensity /
+        LightEnds / TBP writers + Calculate(). Does not save the case.
+        """
+        self._require_connection()
+        notes: list[str] = []
+        if open_form:
+            notes.append(self.open_input_assay_ui(assay_name))
+        notes.append(self._enter_tbp_assay_seed_unlocked(assay_name, seed))
+        if calculate:
+            om = self._oil_manager_object()
+            assay = om.Assays.Item(assay_name)
+            try:
+                assay.Calculate()
+                notes.append("Calculate() OK")
+            except Exception as exc:
+                notes.append(f"Calculate fail:{exc}")
+        return "; ".join(notes)
+
+    def _enter_tbp_assay_seed_unlocked(
+        self, assay_name: str, seed: dict | None = None
+    ) -> str:
+        from oil_manager_ui import BASRAH_OIL_MANAGER_SEED
 
         seed = seed or BASRAH_OIL_MANAGER_SEED
         om = self._oil_manager_object()
         assay = om.Assays.Item(assay_name)
         notes: list[str] = []
 
-        # Bulk density / API
-        sg = seed.get("bulk_sg_15C")
-        api = seed.get("bulk_api")
-        if api is not None:
-            for attr in ASSAY_TBP_WRITE_CANDIDATES["bulk_density"]:
-                if "API" not in attr and attr != "BulkAPIGravityValue":
-                    continue
-                try:
-                    setattr(assay, attr, float(api))
-                    notes.append(f"set {attr}={api}")
-                    break
-                except Exception as exc:
-                    notes.append(f"{attr} fail:{exc}")
-        if sg is not None:
-            # kg/m3 ≈ SG * 1000 at 15 C (approx for BulkMassDensityValue)
-            rho = float(sg) * 1000.0
-            for attr, val in (
-                ("BulkMassDensityValue", rho),
-                ("DensityValue", rho),
-            ):
-                try:
-                    setattr(assay, attr, val)
-                    notes.append(f"set {attr}={val}")
-                    break
-                except Exception as exc:
-                    notes.append(f"{attr} fail:{exc}")
+        # Assay basis: mass fraction (ab_MassFraction = -3)
+        try:
+            assay.Basis = -3
+            notes.append("Basis=-3")
+        except Exception as exc:
+            notes.append(f"Basis fail:{exc}")
 
-        # TBP paired percent + temperature
-        temps = list(seed.get("tbp_temperature_C") or [])
+        # Bulk density kg/m3 ≈ SG * 1000 @15 C — also try mark bulk used
+        sg = seed.get("bulk_sg_15C")
+        if sg is not None:
+            rho = float(sg) * 1000.0
+            ok = False
+            try:
+                assay.BulkMassDensityValue = rho
+                notes.append(f"set BulkMassDensityValue={rho}")
+                ok = True
+            except Exception as exc:
+                notes.append(f"BulkMassDensityValue fail:{exc}")
+            if not ok:
+                try:
+                    assay.BulkMassDensity.Value = rho
+                    notes.append(f"BulkMassDensity.Value={rho}")
+                except Exception as exc:
+                    notes.append(f"BulkMassDensity.Value fail:{exc}")
+            try:
+                assay.BulkPropertiesUsed = True
+                notes.append("BulkPropertiesUsed=True")
+            except Exception as exc:
+                notes.append(f"BulkPropertiesUsed fail:{exc}")
+
+        # TBP: COM expects °C; UI Temperature [F] converts for display.
+        # (Writing °F numbers showed 219.2 for intended 40 C / 104 F.)
+        temps_c = list(seed.get("tbp_temperature_C") or [])
         yields = list(seed.get("tbp_cumulative_wt_pct") or [])
-        if temps and yields:
+        if temps_c and yields:
             try:
                 assay.AssayPercentForBoilingTemperatureValue = yields
                 notes.append("set AssayPercentForBoilingTemperatureValue")
             except Exception as exc:
                 notes.append(f"AssayPercent fail:{exc}")
             try:
-                assay.BoilingTemperatureValue = temps
-                notes.append("set BoilingTemperatureValue")
+                assay.BoilingTemperatureValue = temps_c
+                notes.append(f"set BoilingTemperatureValue (C, n={len(temps_c)})")
             except Exception as exc:
                 notes.append(f"BoilingTemperatureValue fail:{exc}")
 
-        # Light ends
+        # Light ends — UserInput (-1)
         le_pct = seed.get("light_ends_bulk_wt_pct_of_crude")
         le_comp = seed.get("light_ends_cut_wt_pct")
         try:
-            assay.LightEndsCalculationType = -1  # UserInput
+            assay.LightEndsCalculationType = -1
             notes.append("LightEndsCalculationType=-1")
         except Exception as exc:
             notes.append(f"LE calc fail:{exc}")
@@ -752,5 +805,205 @@ class HysysController:
                     notes.append("LE Composition.Values set")
                 except Exception as exc2:
                     notes.append(f"LE comp fail:{exc}; {exc2}")
+
+        return "; ".join(notes)
+
+    def characterize_fill_live(
+        self,
+        seed: dict | None = None,
+        *,
+        blend_name: str = "BasrahBlend",
+        stream_name: str = "Raw Crude",
+        fluid_package: str = "Basis-1",
+        open_form: bool = True,
+        install: bool = True,
+    ) -> str:
+        """Engineer-authorized full Oil Manager fill (Aspen xhysys recipe).
+
+        Sequence from xhysys + live V14:
+        StartOilChange → ensure TBP assay → enter seed (BulkPropertiesUsed,
+        LE, TBP °C) → Calculate → blend AddAssay → create stream if needed →
+        InstallIntoStream → EndOilChange.
+
+        Opens assay form when ``open_form`` (V14 writers often Access Denied
+        otherwise). Does **not** save the case. Verify NBP* after — Status
+        string alone is insufficient.
+        """
+        self._require_connection()
+        from oil_characterize_fill import build_basrah_fill_plan
+        from oil_manager_ui import BASRAH_OIL_MANAGER_SEED
+
+        seed = seed or BASRAH_OIL_MANAGER_SEED
+        plan = build_basrah_fill_plan(
+            seed,
+            blend_name=blend_name,
+            stream_name=stream_name,
+            fluid_package=fluid_package,
+        )
+        assay_name = plan.assay_name
+        notes: list[str] = [f"plan={assay_name}->{blend_name}->{stream_name}"]
+        bm = self.case.BasisManager
+
+        # Hard gate (2026-07-26): refuse Petroleum Assays 1150C / cut-hypo FPs
+        from oil_characterize_fill import preflight_oil_manager_fp
+
+        try:
+            fp0 = bm.FluidPackages.Item(fluid_package)
+            comps = fp0.Components
+            names: list[str] = []
+            for i in range(int(comps.Count)):
+                try:
+                    names.append(str(comps.Item(i).Name))
+                except Exception:
+                    try:
+                        names.append(str(comps.Item(i + 1).Name))
+                    except Exception:
+                        pass
+            blockers = preflight_oil_manager_fp(names)
+            if blockers:
+                raise HysysError(
+                    "Oil Manager fill aborted (wrong FP for LE): "
+                    + " | ".join(blockers)
+                )
+            notes.append(f"preflight OK comps={len(names)}")
+        except HysysError:
+            raise
+        except Exception as exc:
+            notes.append(f"preflight skip:{exc}")
+
+        try:
+            self._oil_manager_object().SetAssociatedFluidPackage(fluid_package)
+            notes.append(f"SetAssociatedFluidPackage({fluid_package})")
+        except Exception as exc:
+            notes.append(f"SetAssociatedFluidPackage fail:{exc}")
+
+        try:
+            bm.StartOilChange()
+            notes.append("StartOilChange")
+        except Exception as exc:
+            notes.append(f"StartOilChange fail:{exc}")
+
+        om = self._oil_manager_object()
+        try:
+            names: list[str] = []
+            try:
+                names = [str(n) for n in list(om.Assays.Names)]
+            except Exception:
+                for i in range(int(om.Assays.Count)):
+                    try:
+                        names.append(str(om.Assays.Item(i).Name))
+                    except Exception:
+                        try:
+                            names.append(str(om.Assays.Item(i + 1).Name))
+                        except Exception:
+                            pass
+            if assay_name not in names:
+                om.Assays.Add(assay_name, "TBP")
+                notes.append(f"Assays.Add({assay_name!r}, TBP)")
+            else:
+                notes.append(f"assay exists:{assay_name}")
+        except Exception as exc:
+            notes.append(f"ensure assay fail:{exc}")
+
+        if open_form:
+            try:
+                notes.append(self.open_input_assay_ui(assay_name))
+            except Exception as exc:
+                notes.append(f"open form fail:{exc}")
+
+        notes.append(self._enter_tbp_assay_seed_unlocked(assay_name, seed))
+
+        assay = om.Assays.Item(assay_name)
+        for attr in ("InputDensityType", "InputMWType", "InputViscosityType"):
+            try:
+                setattr(assay, attr, 0)
+                notes.append(f"{attr}=0")
+            except Exception as exc:
+                notes.append(f"{attr} fail:{exc}")
+        try:
+            assay.LightEndsCompositionBasis = -3
+            notes.append("LightEndsCompositionBasis=-3")
+        except Exception as exc:
+            notes.append(f"LE basis fail:{exc}")
+
+        try:
+            assay.Calculate()
+            notes.append("Calculate() OK")
+        except Exception as exc:
+            notes.append(f"Calculate fail:{exc}")
+
+        try:
+            blend_names: list[str] = []
+            try:
+                blend_names = [str(n) for n in list(om.Blends.Names)]
+            except Exception:
+                for i in range(int(om.Blends.Count)):
+                    try:
+                        blend_names.append(str(om.Blends.Item(i).Name))
+                    except Exception:
+                        try:
+                            blend_names.append(str(om.Blends.Item(i + 1).Name))
+                        except Exception:
+                            pass
+            if blend_name not in blend_names:
+                om.Blends.Add(blend_name)
+                notes.append(f"Blends.Add({blend_name!r})")
+            blend = om.Blends.Item(blend_name)
+            try:
+                blend.AddAssay(assay_name)
+                notes.append(f"AddAssay({assay_name})")
+            except Exception as exc:
+                notes.append(f"AddAssay fail:{exc}")
+            ready = False
+            try:
+                ready = bool(blend.IsReadyToInstall)
+            except Exception:
+                ready = False
+            notes.append(f"IsReadyToInstall={ready}")
+
+            if install and ready:
+                try:
+                    ms = self.case.Flowsheet.MaterialStreams
+                    try:
+                        _ = ms.Item(stream_name)
+                    except Exception:
+                        ms.Add(stream_name)
+                        notes.append(f"MaterialStreams.Add({stream_name!r})")
+                except Exception as exc:
+                    notes.append(f"ensure stream fail:{exc}")
+                try:
+                    blend.InstallIntoStream(stream_name)
+                    notes.append(f"InstallIntoStream({stream_name!r})")
+                except Exception as exc:
+                    notes.append(f"InstallIntoStream fail:{exc}")
+            elif install and not ready:
+                notes.append("skip install: not ready")
+        except Exception as exc:
+            notes.append(f"blend path fail:{exc}")
+
+        try:
+            bm.EndOilChange()
+            notes.append("EndOilChange")
+        except Exception as exc:
+            notes.append(f"EndOilChange fail:{exc}")
+
+        try:
+            fp = bm.FluidPackages.Item(0)
+            n_nbp = 0
+            for i in range(int(fp.Components.Count)):
+                try:
+                    name = str(fp.Components.Item(i).Name)
+                except Exception:
+                    try:
+                        name = str(fp.Components.Item(i + 1).Name)
+                    except Exception:
+                        continue
+                if name.upper().startswith("NBP"):
+                    n_nbp += 1
+            notes.append(
+                f"verify FP={fp.Name} comps={fp.Components.Count} NBP*={n_nbp}"
+            )
+        except Exception as exc:
+            notes.append(f"verify fail:{exc}")
 
         return "; ".join(notes)

@@ -166,5 +166,149 @@ def learn_block() -> str:
             f"Property Package Selection: choose {FP_UI['peng_robinson']!r} (not {FP_UI['property_package_none']!r})",
             "COM PropertyPackageName setter rejected on V14; UI click then COM-read works.",
             f"Status bar before select: {FP_UI['status_need_pp']!r}",
+            "",
+            "--- Input Assay UI (V14 learned) ---",
+            "List: Assay | Correlation Set; open row with one double-click on DataGridCell.",
+            "Form tabs: Input Data | Calculation Defaults | Working Curves | Plots | …",
+            "COM assay writers need the assay form open (else Access Denied).",
+            "COM TBP temperatures are °C; UI Temperature [F] is display-only.",
+            "Bulk Properties must be Used (Not Used → bulk SG / Watson K warnings).",
         ]
+    )
+
+
+@dataclass
+class UiAssayOpenResult:
+    ok: bool
+    method: str = ""
+    detail: str = ""
+    assay_name: str = ""
+
+
+def open_input_assay_row_ui(
+    assay_name: str,
+    *,
+    settle_s: float = 1.5,
+) -> UiAssayOpenResult:
+    """Double-click Input Assay DataGridCell ``assay_name`` once (V14).
+
+    Preconditions: Oil Manager → Input Assay list visible with that row.
+    Do **not** loop clicks — aggressive UI loops have crashed HYSYS V14.
+
+    After open, COM assay *Value writers work (proven sample.hsc 2026-07-25).
+    """
+    try:
+        return _open_assay_via_powershell(assay_name, settle_s=settle_s)
+    except Exception as exc:
+        return UiAssayOpenResult(
+            ok=False, method="uia", detail=str(exc), assay_name=assay_name
+        )
+
+
+def _open_assay_via_powershell(assay_name: str, *, settle_s: float) -> UiAssayOpenResult:
+    import subprocess
+    import textwrap
+
+    # Escape for PowerShell single-quoted string
+    safe = assay_name.replace("'", "''")
+    script = textwrap.dedent(
+        f"""
+        Add-Type -AssemblyName UIAutomationClient
+        Add-Type -AssemblyName UIAutomationTypes
+        Add-Type @"
+        using System;
+        using System.Runtime.InteropServices;
+        public class OcMouseAssay {{
+          [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+          [DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int cButtons, int dwExtraInfo);
+          [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+          public static void DblClick(int x, int y) {{
+            SetCursorPos(x,y);
+            mouse_event(0x02,0,0,0,0); mouse_event(0x04,0,0,0,0);
+            System.Threading.Thread.Sleep(60);
+            mouse_event(0x02,0,0,0,0); mouse_event(0x04,0,0,0,0);
+          }}
+        }}
+        "@
+        $root = [System.Windows.Automation.AutomationElement]::RootElement
+        $hysys = $null
+        foreach ($w in $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)) {{
+          if ($w.Current.Name -match 'Aspen HYSYS') {{ $hysys = $w; break }}
+        }}
+        if (-not $hysys) {{ Write-Output 'ERR:no_hysys_window'; exit 2 }}
+        [OcMouseAssay]::SetForegroundWindow([IntPtr]$hysys.Current.NativeWindowHandle) | Out-Null
+        Start-Sleep -Milliseconds 200
+        $c = New-Object System.Windows.Automation.PropertyCondition(
+          [System.Windows.Automation.AutomationElement]::NameProperty, '{safe}')
+        $els = $hysys.FindAll([System.Windows.Automation.TreeScope]::Descendants, $c)
+        $cell = $null
+        foreach ($el in $els) {{
+          if ($el.Current.ClassName -eq 'DataGridCell') {{
+            $r = $el.Current.BoundingRectangle
+            if ($r.Width -gt 40 -and $r.Height -gt 10) {{ $cell = $el; break }}
+          }}
+        }}
+        if (-not $cell) {{ Write-Output 'ERR:assay_cell_not_visible'; exit 3 }}
+        $r = $cell.Current.BoundingRectangle
+        $x = [int]($r.Left + $r.Width/2)
+        $y = [int]($r.Top + $r.Height/2)
+        [OcMouseAssay]::DblClick($x, $y)
+        Write-Output "OK:dblclick:$x,$y"
+        """
+    )
+    completed = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    out = (completed.stdout or "").strip()
+    if completed.returncode != 0 or not out.startswith("OK:"):
+        return UiAssayOpenResult(
+            ok=False,
+            method="uia_powershell",
+            detail=out or (completed.stderr or f"exit {completed.returncode}"),
+            assay_name=assay_name,
+        )
+    time.sleep(settle_s)
+    # Confirm form markers
+    verify = textwrap.dedent(
+        f"""
+        Add-Type -AssemblyName UIAutomationClient
+        Add-Type -AssemblyName UIAutomationTypes
+        $root = [System.Windows.Automation.AutomationElement]::RootElement
+        $hysys = $null
+        foreach ($w in $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)) {{
+          if ($w.Current.Name -match 'Aspen HYSYS') {{ $hysys = $w; break }}
+        }}
+        $ok = 0
+        foreach ($name in @('Input Data','Edit Assay...','Assay Percent','Calculate')) {{
+          $c = New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::NameProperty, $name)
+          $el = $hysys.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $c)
+          if ($el) {{ $ok++ }}
+        }}
+        Write-Output "OK:markers:$ok"
+        """
+    )
+    v = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", verify],
+        capture_output=True,
+        text=True,
+        timeout=45,
+        check=False,
+    )
+    vout = (v.stdout or "").strip()
+    markers = 0
+    if vout.startswith("OK:markers:"):
+        try:
+            markers = int(vout.split(":")[-1])
+        except ValueError:
+            markers = 0
+    return UiAssayOpenResult(
+        ok=markers >= 2,
+        method="uia_powershell",
+        detail=f"{out}; {vout}",
+        assay_name=assay_name,
     )

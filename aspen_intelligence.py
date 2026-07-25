@@ -21,6 +21,56 @@ SOURCE_NOTE = (
 )
 
 
+# --- What the supplied CHMs actually are (audited 2026-07-25) ----------------
+# Only 2 of the 5 CHMs in `from aspen doc/` are HYSYS documentation. The three
+# ww10_* files are the WinWrap Basic macro-engine manuals bundled with HYSYS
+# (language reference / COM host / C++ integration) — no HYSYS UI content.
+# Consequence: we have NO Aspen source for HYSYS product dialogs and UI text.
+DOC_SOURCE_INVENTORY: dict[str, dict[str, Any]] = {
+    "AspenFeedStockAssayManager.chm": {
+        "is_hysys_doc": True,
+        "covers": "Assay Management / Petroleum Assays (PIMS): characterize, cuts, blends",
+        "extracted": True,
+    },
+    "xhysys.chm": {
+        "is_hysys_doc": True,
+        "covers": "HYSYS Customization COM: OilManager, Assay, Blend, ProcessStream",
+        "extracted": True,
+    },
+    "ww10_000.chm": {
+        "is_hysys_doc": False,
+        "covers": "WinWrap Basic language reference (Abs, Dim, DlgText...) — not HYSYS",
+        "extracted": False,
+    },
+    "ww10_com.chm": {
+        "is_hysys_doc": False,
+        "covers": "WinWrap Basic COM host reference — not HYSYS",
+        "extracted": False,
+    },
+    "ww10_cxx.chm": {
+        "is_hysys_doc": False,
+        "covers": "WinWrap Basic C++/ATL/MFC integration tutorials — not HYSYS",
+        "extracted": False,
+    },
+}
+
+# Verified-absent search (1665 extracted files, control phrase "Characterization
+# Error" confirmed the scan was live). Do not re-run these blind.
+DOC_SEARCH_MISSES: tuple[str, ...] = (
+    "Assay Component Selection",
+    "assay compatible",
+    "common assay component",
+    "compatible component list",
+    "Empty component list",
+)
+
+DOC_COVERAGE_GAP = (
+    "No HYSYS *user guide* CHM was supplied — only Assay Manager + COM reference. "
+    "HYSYS product dialogs (e.g. Assay Component Selection) are undocumented here; "
+    "learn them live from the UI, not from these CHMs."
+)
+
+
 # --- HYSYS COM enumerations (xhysys) -----------------------------------------
 
 ASSAY_TYPE = {
@@ -66,6 +116,45 @@ ASSAY_LIGHT_ENDS_COMPOSITION_BASIS = {
     "alecb_MassFlow": -6,
     "alecb_LiquidVolumeFlow": -7,
 }
+
+
+# BasisManager oil / basis edit transaction (xhysys BasisManager topic)
+BASIS_MANAGER_OIL_CHANGE = (
+    "StartOilChange",  # Allows changing of Oil
+    "EndOilChange",  # Commits or cancels Oil changes
+    "CanEndOilChange",
+    "IsChangingOil",
+    "StartBasisChange",
+    "EndBasisChange",
+    "CanEndBasisChange",
+    "IsChangingBasis",
+)
+
+# Assay write surface (xhysys AssayASTM_D2887 / AssayBulkOnly — shared with TBP)
+ASSAY_WRITE_MEMBERS = (
+    "BulkPropertiesUsed",  # Boolean — UI "Bulk Properties" Used
+    "BulkMassDensityValue",
+    "BulkMolecularWeightValue",
+    "AssayPercentForBoilingTemperatureValue",
+    "BoilingTemperatureValue",  # case default units; live V14 Oil Manager = °C
+    "LightEndsCalculationType",
+    "LightEndsCompositionBasis",
+    "LightEndsCompositionValue",
+    "LightEndsPercentInAssayValue",
+    "InputDensityType",  # AssayCurveType_enum
+    "InputMWType",
+    "InputViscosityType",
+    "Basis",  # mass/vol/mole — live Mass = -3
+    "UseCorrelationSet",
+)
+
+# AspenFeedStockAssayManager vs Oil Manager (product boundary)
+FEEDSTOCK_ASSAY_MANAGER_NOTE = (
+    "AspenFeedStockAssayManager.chm documents Petroleum Assays / PIMS "
+    "Characterize (micro-cuts, Property Match Setting Cut/Bulk/Both, Pure Component tab). "
+    "It does NOT document Oil Manager COM (BulkPropertiesUsed, InstallIntoStream). "
+    "CDU FEED automation stays on Oil Manager; Assay Library 'Add Assays' is optional reference only."
+)
 
 
 # OilManager members (xhysys OilManager topic)
@@ -170,16 +259,22 @@ CHARACTERIZATION_TOOL_CHOICE = {
 
 def format_tool_choice_block() -> str:
     c = CHARACTERIZATION_TOOL_CHOICE
-    return "\n".join(
-        [
-            "--- HYSYS tool choice (manual + V14 UI) ---",
-            f"Use: {c['primary']} (ribbon: {c['ribbon_group']})",
-            f"Why: {c['why']}",
-            f"Not Petroleum Assays: {c['not_petroleum_assays']}",
-            f"Not Hypotheticals Manager: {c['not_hypotheticals_manager']}",
-            "COM: " + ", ".join(c["com_objects"]),
-        ]
-    )
+    lines = [
+        "--- HYSYS tool choice (manual + V14 UI) ---",
+        f"Use: {c['primary']} (ribbon: {c['ribbon_group']})",
+        f"Why: {c['why']}",
+        f"Not Petroleum Assays: {c['not_petroleum_assays']}",
+        f"Not Hypotheticals Manager: {c['not_hypotheticals_manager']}",
+        "COM: " + ", ".join(c["com_objects"]),
+    ]
+    try:
+        from petroleum_assays_ui import format_petroleum_assays_ui_block
+
+        lines.append("")
+        lines.append(format_petroleum_assays_ui_block())
+    except Exception:
+        pass
+    return "\n".join(lines)
 
 
 # Fluid Package Set Up — V14 UI contract (screenshot + live COM/UIA 2026-07-25)
@@ -357,9 +452,16 @@ def format_com_capability_block() -> str:
 
 def format_aspen_block(assay: dict[str, Any] | None = None) -> str:
     """PE-board block: Aspen methodology + optional entry plan."""
+    hysys_docs = [k for k, v in DOC_SOURCE_INVENTORY.items() if v["is_hysys_doc"]]
+    other_docs = [k for k, v in DOC_SOURCE_INVENTORY.items() if not v["is_hysys_doc"]]
     lines = [
         "--- Aspen intelligence (coded) ---",
         SOURCE_NOTE,
+        "",
+        f"HYSYS doc sources ({len(hysys_docs)}/{len(DOC_SOURCE_INVENTORY)} CHMs): "
+        + ", ".join(hysys_docs),
+        "Not HYSYS docs (WinWrap Basic): " + ", ".join(other_docs),
+        f"Coverage gap: {DOC_COVERAGE_GAP}",
         "",
         "Characterize methodology:",
     ]
@@ -380,6 +482,15 @@ def format_aspen_block(assay: dict[str, Any] | None = None) -> str:
     from oil_manager_ui import format_oil_manager_ui_block
 
     lines.append(format_oil_manager_ui_block())
+    lines.append("")
+    lines.append(FEEDSTOCK_ASSAY_MANAGER_NOTE)
+    try:
+        from oil_characterize_fill import format_fill_plan
+
+        lines.append("")
+        lines.append(format_fill_plan())
+    except Exception:
+        pass
 
     if assay is None:
         lines.append("")

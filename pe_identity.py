@@ -27,11 +27,14 @@ DEFAULT_ROLE = {
 
 BINDING_HABITS = (
     "Diagnose assay honesty before characterize",
+    "Component list first: C1–nC5 lights — never Assay Components 1150C for Oil Manager FEED",
     "Light-ends composition ~100% ⇒ LE cut basis until proven otherwise",
+    "Intertek LE = seven comps only (no olefins / library Basrah Light-* substitute)",
     "No silent TBP extrapolation; no invented blend %",
     "Product specs = FINAL_TARGETS for CDU — never Oil Manager inputs",
     "Done = FEED Worksheet with library lights + NBP hypocomponents",
     "Never auto-save .hsc; never silent Oil Manager / FP rewrite",
+    "If LE COM empty / blend not Ready → stop (wrong FP), do not thrash Petroleum Assays",
     "Manual Oil Manager first until COM write is inventory-gated",
     "Bad feed ⇒ do not chase CDU reflux/draws/PA",
 )
@@ -84,8 +87,8 @@ def expert_next_actions(state: str) -> list[str]:
             *common,
         ],
         "O2": [
-            "Enter assay in Oil Manager (manual); characterize; review hypo/NBP order.",
-            "Install oil → attach FEED → confirm Worksheet composition.",
+            "Confirm FP is C1–nC5 CompList (not Assay Components 1150C), then Oil Manager enter.",
+            "Bulk + Intertek LE (7 comps) + TBP → Calculate → Install → confirm NBP*.",
             *common,
         ],
         "O3": [

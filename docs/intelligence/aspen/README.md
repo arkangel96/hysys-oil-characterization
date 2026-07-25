@@ -13,22 +13,26 @@
 - Prefer **TBP** input; cut yields can build TBP if adequate.
 - Lights lighter than **n-C5** → whole crude + light-end cut.
 - Blends from **characterized** assays only.
+- **Property Match Setting** Cut/Bulk/Both (V12+) — Oil Manager analogue is `BulkPropertiesUsed`.
+- UI “Add Assays” / Aspen Assay Library = commercial characterized models — **not** Oil Manager MRC Basrah.
 
 ### 2. Aspen HYSYS COM (`xhysys`) — Oil Manager / Blend / Stream
 
 Pertinent surfaces coded in `aspen_intelligence.py`:
 
-- `AssayType_enum`, `AssayBasis_enum`, LE calc/basis enums
+- `AssayType_enum`, `AssayBasis_enum`, LE calc/basis enums, `AssayCurveType_enum`
 - `AssayExtrapolationMethod_enum` (exists — **PE forbids silent use**)
+- `BasisManager.StartOilChange` / `EndOilChange` — oil-edit transaction
+- Assay writers: `BulkPropertiesUsed`, `BulkMassDensityValue`, TBP/LE `*Value`
 - `OilManager`: Blends, CorrelationSets, IBP/FBP, `SetAssociatedFluidPackage`
 - `Blend`: `AddAssay`, `IsReadyToInstall`, `InstallIntoStream`, ComponentNBP*
 - `ProcessStream`: `ComponentMassFractionValue` / mole equivalents
-- `AssaysCollection`: Count / Item / Add (Add = gated write)
 
-### 3. Verify path (READ-first)
+### 3. Autonomous fill (coded)
 
-Manual characterize in Oil Manager → Assist reads blend ready + FEED composition
-(lights + `NBP*`) → sets install/attach evidence for O4 gate.
+`oil_characterize_fill.build_basrah_fill_plan` + `HysysController.characterize_fill_live`
+fills Oil Manager from MRC seed. Always **verify NBP*** on FP / Raw Crude composition
+after install — Output Blend Status can show Installed with zero hypos.
 
 ## PE conflict we keep intentional
 

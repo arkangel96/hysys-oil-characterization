@@ -1,0 +1,56 @@
+{
+  "crude_id": "MISHRIF",
+  "display_name": "Mishrif",
+  "source": {
+    "tag": "PROPOSAL_OR_INTERTEK_TO_CONFIRM",
+    "document": null,
+    "report_date": null,
+    "table_reference": null,
+    "confidence": "medium"
+  },
+  "bulk": {
+    "api_gravity": 26.4,
+    "specific_gravity_15C": null,
+    "sulfur_wt_pct": null,
+    "nitrogen_wt_ppm": null,
+    "viscosity_cSt_40C": null,
+    "viscosity_cSt_50C": null,
+    "viscosity_cSt_100C": null,
+    "rvp_kPa": null,
+    "ccr_wt_pct": null,
+    "asphaltenes_wt_pct": null,
+    "tan_mgKOH_g": null,
+    "water_wt_pct": null,
+    "salt_ptb": null,
+    "vanadium_wt_ppm": null,
+    "nickel_wt_ppm": null
+  },
+  "light_ends": {
+    "basis": "OF_LIGHT_ENDS_CUT",
+    "light_ends_bulk_wt_pct_of_crude": null,
+    "components": {
+      "C1": null,
+      "C2": null,
+      "C3": null,
+      "iC4": null,
+      "nC4": null,
+      "iC5": null,
+      "nC5": null
+    }
+  },
+  "tbp": {
+    "basis": "cumulative_wt_pct",
+    "temperature_unit": "C",
+    "points": []
+  },
+  "design": {
+    "role": "HEAVY_BOUND",
+    "design_case": false,
+    "blend_fraction": null
+  },
+  "characterization": {
+    "status": "O0",
+    "notes": [],
+    "flags": []
+  }
+}
