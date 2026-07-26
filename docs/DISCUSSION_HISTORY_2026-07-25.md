@@ -175,7 +175,7 @@ Input Data: Assay Percent / Temperature **[F]**; Calculate; status “Assay Was 
 - `hysys_ui_automation.open_input_assay_row_ui`
 - `HysysController.open_input_assay_ui` / `enter_tbp_assay_seed_live`
 
-**Still next:** Output Blend → Install → **Raw Crude** composition verify. Blends still 0 after Calculate.
+**Still next at that point:** Output Blend → Install → **Raw Crude** composition verify. Blends still 0 after Calculate.
 
 ---
 
@@ -188,4 +188,98 @@ Read `from aspen doc/AspenFeedStockAssayManager.chm` (_extract/AssayManager) and
 **Coded:** `oil_characterize_fill.py` + `HysysController.characterize_fill_live`  
 StartOilChange → BulkPropertiesUsed + TBP °C + LE → Calculate → Blend → Install → EndOilChange → verify NBP*.
 
-*End of Aspen doc learn / fill coding.**
+*End of Aspen doc learn / fill coding.*
+
+---
+
+## 11. Live manual completion — Basrah (continued 2026-07-26)
+
+The Oil Manager path was completed manually in live HYSYS V14 after the COM/UI lessons were coded.
+
+### Assay definition
+
+- Bulk Properties = **Used**
+- Assay Data Type = **TBP**
+- Light Ends = **Input Composition**
+- Assay Basis = **Mass**
+- Molecular Wt. Curve / Density Curve / Viscosity Curves = **Not Used**
+- TBP Distillation Conditions = **Atmospheric**
+
+### Basrah entered data
+
+- Bulk density: SG **0.863** (live calculated/installed standard liquid density ≈ **864.7 kg/m³**)
+- LE content: **3.21 wt% of whole crude**
+- LE composition, wt% of LE cut:
+  C1 0; C2 0.54; C3 16.63; iC4 8.24; nC4 27.25; iC5 15.99; nC5 31.34; H2O 0
+- TBP: all 14 proposal points entered in °C / cumulative wt%
+
+The assay calculated green. A single-assay blend was created and installed:
+
+- Assay: `Basrah_Assay`
+- Blend: `Basrah_Blend`
+- Stream: `raw crude`
+
+The stream composition showed discrete lights plus generated `NBP[0]*` hypocomponents.
+
+---
+
+## 12. Live manual completion — Mishrif
+
+Mishrif was characterized as a **separate heavy-bound oil**, not blended with Basrah.
+
+### Mishrif entered data
+
+- Bulk density: **896.0 kg/m³** (SG 0.896)
+- LE content: **3.26 wt% of whole crude**
+- LE composition, wt% of LE cut:
+  C1 0; C2 0.01; C3 5.98; iC4 7.90; nC4 27.41; iC5 23.09; nC5 35.60; H2O 0
+- TBP, °C / cumulative wt%:
+  40/2.83, 70/4.89, 100/7.67, 120/9.71, 140/12.13, 170/16.24,
+  190/18.83, 210/21.50, 250/26.88, 270/29.77, 300/33.96,
+  360/43.25, 400/49.38, 500/64.55
+
+The assay and blend calculated and installed:
+
+- Assay: `Mishrif` (cosmetic rename to `Mishrif_Assay` recommended)
+- Blend: `Mishrif_B` (cosmetic rename to `Mishrif_Blend` recommended)
+- Stream: `Raw Crude Mishrif`
+
+---
+
+## 13. Read-only live COM verification
+
+The completed open `sample.hsc` was checked through read-only COM:
+
+| Check | Basrah | Mishrif |
+|-------|--------|---------|
+| Bulk Properties Used | True | True |
+| Bulk density | 864.7399 kg/m³ | 896.0 kg/m³ |
+| LE content | 3.21 wt% | 3.26 wt% |
+| LE composition | Matches proposal | Matches proposal |
+| TBP points | 14; matches proposal | 14; matches proposal |
+| Blend `IsReadyToInstall` | True | True |
+| Installed stream standard liquid density | 864.7068 kg/m³ | 895.9596 kg/m³ |
+| Installed composition | lights + Basrah NBP* | lights + Mishrif NBP* |
+
+Stream temperature, pressure, and flow remained unspecified after installation. Those are
+flowsheet Conditions inputs, not Oil Manager blend-ratio inputs. Battery-limit seed remains
+approximately **40 °C**, **3.0 kg/cm² g**, with project capacity handled on the stream.
+
+---
+
+## 14. Final PE disposition
+
+- Both boundary crudes now have credible characterized FEED streams.
+- Basrah and Mishrif remain separate cases/bounds; no blend percentage was invented.
+- Bulk MW, density, and viscosity **curves** remain Not Used because no cut-wise curves were supplied.
+- Bulk viscosity, sulphur, H2S, pour point, RVP, BS&W, salt, CCR, asphaltene,
+  ash, TAN, V, Ni, and KUOP remain documented design-quality givens, not mandatory
+  TBP/LE characterization inputs.
+- ASTM D86 is empty in the proposal. This is **not a characterization blocker**
+  because measured/provided TBP is primary. Do not synthesize D86 merely to fill the table.
+- Residue uncertainty remains explicit: proposal TBP coverage reaches only about 71.84 wt%
+  for Basrah and 64.55 wt% for Mishrif at 500 °C. No silent heavy-end extrapolation.
+- Prefer the full 25-page INTERTEK masters if later obtained and reconcile any conflict
+  before treating either assay as final design-quality data.
+
+*End of live Basrah/Mishrif Oil Manager completion and verification transcript.*
